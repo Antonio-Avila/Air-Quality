@@ -13,6 +13,7 @@ library(RAQSAPI)
 library(keyring)
 library(beepr)
 library(usmap)
+library(lubridate)
 ```
 
 ## R Markdown
@@ -74,26 +75,47 @@ ozone_texas <- read_csv("ozone_texas.csv")
 ```
 
 
-```{r}
+
+```{r 8 hour ozone avg function}
+
+avg_8hr <- function(data){
+  
+  data %>% group_by(county, site_number, date_local) %>% #something
+  
+}
 
 ```
 
 
 ```{r}
-ozone_texas_20_21 %>% group_by(date_local) %>% 
+ozone_texas %>% group_by(county, date_local, time_of_day) %>% 
+  
+```
+
+
+
+```{r}
+ozone_texas %>% group_by(date_local) %>% 
   summarise(avg_ppb = mean(sample_measurement, na.rm = TRUE) * 1000) %>% 
   ggplot(aes(date_local, avg_ppb)) +
     geom_line() +
     geom_smooth()
 ```
 
+```{r}
+ozone_texas %>% group_by(county, date_local) %>% 
+  summarise(avg_ppb = mean(sample_measurement, na.rm = TRUE) * 1000) %>% 
+  ggplot(aes(date_local, avg_ppb, color = county)) +
+    geom_line() +
+    geom_smooth()
+```
 
 
 ```{r}
 
 # health_ozone <- data.frame()
 
-avg_county_ozone <- ozone_texas_17_18 %>% group_by(state_code, county, county_code, site_number) %>% 
+avg_county_ozone <- ozone_texas %>% group_by(state_code, county, county_code, site_number) %>% 
   summarise(avg_ppm = mean(sample_measurement, na.rm = TRUE))
 
 
@@ -103,7 +125,6 @@ avg_county_ozone["fips"] <- as.integer(avg_county_ozone$state_code) * 1000 + as.
 
 plot_usmap(regions = "counties", include = "TX", data = avg_county_ozone, values = "avg_ppb") +
   scale_fill_gradient(low = "green", high = "red")
-
 
   
 ```
