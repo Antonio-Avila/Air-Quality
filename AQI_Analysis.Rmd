@@ -14,6 +14,7 @@ library(keyring)
 library(beepr)
 library(usmap)
 library(lubridate)
+library(forecast)
 ```
 
 ## R Markdown
@@ -75,21 +76,37 @@ ozone_texas <- read_csv("ozone_texas.csv")
 ```
 
 
+```{r calculate max of rolling 8 hour ozone avg}
 
-```{r 8 hour ozone avg function}
-
-avg_8hr <- function(data){
-  
-  data %>% group_by(county, site_number, date_local) %>% #something
-  
+max_8hr_avg <- function(data){
+  avgs = matrix(nrow = 14-8, ncol = 1)
+  for(i in 1:(24-8)) { 
+    avgs[i] = mean(data[i:(i+7)], na.rm = TRUE)
+  }
+  max_avg = max(avgs)
+  return(max_avg)
 }
+
+
+daily_max_avg <- ozone_texas %>% 
+  group_by(county, site_number, date_local) %>% 
+  summarize(max_8hr_avg = max_8hr_avg(sample_measurement))
+
 
 ```
 
 
-```{r}
-ozone_texas %>% group_by(county, date_local, time_of_day) %>% 
-  
+```{r Harris county ozone evol}
+
+daily_max_avg %>% filter(county == "Harris") %>%
+  group_by(date_local) %>% 
+  summarize(avg_max = mean(max_8hr_avg, na.rm = TRUE)) %>% 
+  ggplot(aes(date_local, avg_max)) + 
+    geom_line() + 
+    geom_hline(yintercept = 0.07, color = "red") +
+    geom_smooth()
+
+
 ```
 
 
@@ -101,6 +118,7 @@ ozone_texas %>% group_by(date_local) %>%
     geom_line() +
     geom_smooth()
 ```
+
 
 ```{r}
 ozone_texas %>% group_by(county, date_local) %>% 
