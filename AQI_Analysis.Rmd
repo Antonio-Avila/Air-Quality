@@ -77,12 +77,16 @@ ozone_texas <- read_csv("ozone_texas.csv")
 
 
 ```{r calculate max of rolling 8 hour ozone avg}
-
-max_8hr_avg <- function(data){
+avg_8hr <- function(data){
   avgs = matrix(nrow = 14-8, ncol = 1)
   for(i in 1:(24-8)) { 
     avgs[i] = mean(data[i:(i+7)], na.rm = TRUE)
   }
+  return(avgs)
+}
+
+
+max_8hr_avg <- function(avgs){
   max_avg = max(avgs)
   return(max_avg)
 }
@@ -94,6 +98,13 @@ daily_max_avg <- ozone_texas %>%
 
 
 ```
+
+```{r verify with published data}
+
+test_day = ozone_texas %>% filter(site_number == '0416', date_local == '2019-04-29')
+
+```
+
 
 
 ```{r Harris county ozone evol}
