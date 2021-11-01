@@ -73,12 +73,16 @@ state_codes <- aqs_states()
 # write_csv(ozone_texas, "ozone_texas.csv")
 
 ozone_texas <- read_csv("ozone_texas.csv")
+ozone_texas["fips"] <- as.integer(ozone_texas$state_code) * 1000 + as.integer(ozone_texas$county_code)
+
 ```
 
 
-```{r calculate max of rolling 8 hour ozone avg}
+```{r function for 8 hour ozone avg}
+
+
 avg_8hr <- function(data){
-  avgs = matrix(nrow = 14-8, ncol = 1)
+  avgs = matrix(nrow = 24-8, ncol = 1)
   for(i in 1:(24-8)) { 
     avgs[i] = mean(data[i:(i+7)], na.rm = TRUE)
   }
@@ -86,35 +90,41 @@ avg_8hr <- function(data){
 }
 
 
-max_8hr_avg <- function(avgs){
-  max_avg = max(avgs)
+max_8hr_avg <- function(data){
+  max_avg = max(avg_8hr(data)) * 1000
+  max_avg = trunc(max_avg)
   return(max_avg)
 }
-
-
-daily_max_avg <- ozone_texas %>% 
-  group_by(county, site_number, date_local) %>% 
-  summarize(max_8hr_avg = max_8hr_avg(sample_measurement))
 
 
 ```
 
 ```{r verify with published data}
+# Verified calculations with results from various days published by the Texas Commission on Environmental Quality
 
-test_day = ozone_texas %>% filter(site_number == '0416', date_local == '2019-04-29')
+test_day <- ozone_texas %>% filter(date_local == "2019-10-02", site_number == "0416")
+test_day$sample_measurement %>% max_8hr_avg()
 
+```
+
+```{r}
+daily_max_sites <- ozone_texas %>% 
+  group_by(county, fips, site_number, date_local) %>% 
+  summarize(max_8hr_avg = max_8hr_avg(sample_measurement))
+
+daily_max_counties <- daily_max_sites %>%
+  group_by(county, fips, date_local) %>% 
+  summarise(county_max = max(max_8hr_avg, na.rm = TRUE)) %>% filter(county == "Harris", date_local == "2021-01-01")
 ```
 
 
 
 ```{r Harris county ozone evol}
 
-daily_max_avg %>% filter(county == "Harris") %>%
-  group_by(date_local) %>% 
-  summarize(avg_max = mean(max_8hr_avg, na.rm = TRUE)) %>% 
-  ggplot(aes(date_local, avg_max)) + 
+daily_max_counties %>% filter(county == "Harris") %>% 
+  ggplot(aes(date_local, county_max)) + 
     geom_line() + 
-    geom_hline(yintercept = 0.07, color = "red") +
+    geom_hline(yintercept = 70, color = "red") +
     geom_smooth()
 
 
