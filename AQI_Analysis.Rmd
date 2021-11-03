@@ -15,6 +15,8 @@ library(beepr)
 library(usmap)
 library(lubridate)
 library(forecast)
+library(plotly)
+library(rjson)
 ```
 
 ## R Markdown
@@ -107,68 +109,83 @@ test_day$sample_measurement %>% max_8hr_avg()
 
 ```
 
-```{r}
+```{r find max per county}
 daily_max_sites <- ozone_texas %>% 
   group_by(county, fips, site_number, date_local) %>% 
   summarize(max_8hr_avg = max_8hr_avg(sample_measurement))
 
 daily_max_counties <- daily_max_sites %>%
   group_by(county, fips, date_local) %>% 
-  summarise(county_max = max(max_8hr_avg, na.rm = TRUE)) %>% filter(county == "Harris", date_local == "2021-01-01")
+  summarise(county_max = max(max_8hr_avg, na.rm = TRUE))
 ```
 
 
 
-```{r Harris county ozone evol}
+```{r Harris county ozone lvl}
 
 daily_max_counties %>% filter(county == "Harris") %>% 
-  ggplot(aes(date_local, county_max)) + 
+  ggplot(aes(date_local, county_max, color = county_max)) + 
     geom_line() + 
+    scale_fill_gradient(low = "green", high = "red") +
     geom_hline(yintercept = 70, color = "red") +
-    geom_smooth()
+    geom_smooth() + 
+    ggtitle("Harris County Ozone levels 2017-2021") +
+    xlab("Date") +
+    ylab("Ozone 8-Hr Max (ppb)")
 
 
 ```
+
 
 
 
 ```{r}
-ozone_texas %>% group_by(date_local) %>% 
-  summarise(avg_ppb = mean(sample_measurement, na.rm = TRUE) * 1000) %>% 
-  ggplot(aes(date_local, avg_ppb)) +
-    geom_line() +
-    geom_smooth()
+
+daily_max_counties %>% filter(date_local == "2020-05-01") %>% 
+  plot_usmap(regions = "counties", include = "TX", data = ., values = "county_max") +
+    scale_fill_gradient(low = "green", high = "red", labels = "high", breaks = 70)
+
+
+daily_max_counties %>% filter(date_local == "2018-05-01") %>% 
+  plot_usmap(regions = "counties", include = "TX", data = ., values = "county_max") +
+    scale_fill_gradient(low = "green", high = "red")
 ```
 
 
-```{r}
-ozone_texas %>% group_by(county, date_local) %>% 
-  summarise(avg_ppb = mean(sample_measurement, na.rm = TRUE) * 1000) %>% 
-  ggplot(aes(date_local, avg_ppb, color = county)) +
-    geom_line() +
-    geom_smooth()
+
+
+```{r testing plotly map, include = FALSE}
+#broken mess around with at some point to compare to regular ggplot
+
+url <- 'https://raw.githubusercontent.com/plotly/datasets/master/geojson-counties-fips.json'
+counties <- rjson::fromJSON(file=url)
+
+
+geo <-  list(
+  visible = FALSE, resolution = 110,
+  scope = 'usa', 
+  showcountries = TRUE, 
+  projection = list(type = 'albers usa'),
+  countrycolor = toRGB("Black"),
+  showlakes = TRUE,
+  lakecolor = toRGB("white"),
+  showsubunits = T,
+  subunitcolor = toRGB("Blue"),
+  showland = TRUE,
+  landcolor = toRGB("#e5ecf6")
+ )
+
+fig <- plot_ly(type = "scattergeo", mode = "markers")
+
+fig <- fig %>% add_trace(geojson = counties, locations = daily_max_counties$fips, 
+                          z = daily_max_counties$county_max, type = "choropleth", 
+                         marker=list(line=list(width=0), zmin = 0, zmax = 100)
+)
+
+fig <- fig %>% layout(geo = geo)
+fig
+
 ```
-
-
-```{r}
-
-# health_ozone <- data.frame()
-
-avg_county_ozone <- ozone_texas %>% group_by(state_code, county, county_code, site_number) %>% 
-  summarise(avg_ppm = mean(sample_measurement, na.rm = TRUE))
-
-
-avg_county_ozone["avg_ppb"] <- avg_county_ozone["avg_ppm"] * 1000
-avg_county_ozone["fips"] <- as.integer(avg_county_ozone$state_code) * 1000 + as.integer(avg_county_ozone$county_code)
-
-
-plot_usmap(regions = "counties", include = "TX", data = avg_county_ozone, values = "avg_ppb") +
-  scale_fill_gradient(low = "green", high = "red")
-
-  
-```
-
-
 
 
 
