@@ -19,6 +19,8 @@ library(plotly)
 library(rjson)
 library(forecast)
 library(shiny)
+library(tseries)
+library(quantmod)
 ```
 
 ## R Markdown
@@ -31,11 +33,13 @@ server <-  'AQSDatamart'
 aqs_credentials(username = datamart_user, key_get(service = server, username = datamart_user))
 ```
 
+
 ```{r state codes, include = FALSE}
 
 state_codes <- aqs_states()
 
 ```
+
 
 ```{r extract ozone data, include = FALSE}
 
@@ -62,6 +66,7 @@ state_codes <- aqs_states()
 
 ```
 
+
 ```{r import data and combine}
 
 # ozone_texas_20_21 <- read_csv("ozone_texas_20_21.csv")
@@ -77,6 +82,7 @@ ozone_texas <- read_csv("ozone_texas.csv")
 ozone_texas["fips"] <- as.integer(ozone_texas$state_code) * 1000 + as.integer(ozone_texas$county_code)
 
 ```
+
 
 ```{r function for 8 hour ozone avg}
 
@@ -99,6 +105,7 @@ max_8hr_avg <- function(data){
 
 ```
 
+
 ```{r verify with published data}
 # Verified calculations with results from various days published by the Texas Commission on Environmental Quality
 # 
@@ -107,7 +114,8 @@ max_8hr_avg <- function(data){
 
 ```
 
-```{r find max per county}
+
+```{r find daily max avg per county}
 daily_max_sites <- ozone_texas %>% 
   group_by(county, fips, site_number, date_local) %>% 
   summarize(max_8hr_avg = max_8hr_avg(sample_measurement))
@@ -116,7 +124,6 @@ daily_max_counties <- daily_max_sites %>%
   group_by(county, fips, date_local) %>% 
   summarise(county_max = max(max_8hr_avg, na.rm = TRUE))
 ```
-
 
 
 ```{r Harris county ozone lvl, include = FALSE}
@@ -138,19 +145,37 @@ daily_max_counties <- daily_max_sites %>%
 
 p <- daily_max_counties %>% filter(county == "Harris") %>% 
   ggplot(aes(date_local, county_max)) + 
-    geom_line(color="#69b3a2") + 
+    geom_line(aes(color="8-Hr Max Avg Ozone")) + 
     geom_hline(yintercept = 70, color = "red") +
-    geom_smooth(method = "gam", se = FALSE) + 
+    geom_smooth(method = "gam", se = FALSE, aes(color = "Local Model")) + 
+    geom_smooth(method = "lm", aes(color = "Trend"), se = FALSE) +
     ggtitle("Harris County Ozone levels 2017-2021") +
     xlab("Date") +
     ylab("Ozone 8-Hr Max (ppb)") +
-    annotate("text", x = as.Date("2018-01-01"), y = 71, label = "Unhealthy Level")
+    annotate("text", x = as.Date("2018-01-01"), y = 71, label = "Unhealthy Level") +
+    scale_color_manual(name = "Legend", values = c("#69b3a2", "#00A9FF", "purple"))
 ggplotly(p, dynamicTicks = TRUE) %>%  layout(hovermode = "x") 
+
+ozone_lm <- lm(county_max ~., data = harris_county)
+summary(ozone_lm)
+
+
+# Some statistics
+adf.test(harris_county$county_max, k =365)
+
+par(mfcol = c(2,1))
+Acf(harris_county$county_max, lag.max = 720)
+Pacf(harris_county$county_max, lag.max = 720)
+par(mfcol = c(1,1))
 ```
 
+Even though there is some variability throughout the time period in the daily, maximum 8-hour ozone levels, the plot suggests there may be a slight downward trend. Fitting a linear model to the time series data rejects this notion. The p-value for the coefficient corresponding to the date yields a value of 0.47, meaning the coefficient and thus variable is not statistically significant. There is no evidence to suggest a statistically significant decrease in ozone levels with time. Granted, this model cannot be used for anything other than determining a trend since it is a very poor fit for the data. The data is obviously non-linear with some seasonality sprinkled in there, which makes sense since ozone levels should increase during summer periods. 
 
-```{r creating a forecasting function}
-# Tried to fit an arima model using the auto.arima function, knowing it wasn't going to perform well. But damn, wasnt expecting it to be this bad.
+Next, I will attempt to fit a model the data using a more appropriate method. The classical approach to time series data is to model it using an ARIMA model, or some variation of it, to forecast with it. 
+
+
+```{r testing arima model}
+# Tried to fit an arima model using the auto.arima function, knowing it wasn't going to perform well. But damn, wasn't expecting it to be this bad.
 
 harris_county <- daily_max_counties %>% ungroup() %>% filter(county == "Harris") %>% select(date_local, county_max)
 fit = auto.arima(harris_county$county_max)
@@ -163,16 +188,96 @@ p <- ggplot(harris_county, aes(x = date_local)) +
 ggplotly(p, dynamicTicks = TRUE) %>% layout(hovermode = "x")
 
 p <- ggplot(harris_county, aes(x = date_local, y = pred$residuals)) +
-  geom_line()
+  geom_line() +
+  xlab("Date") + ylab("Residuals")
 ggplotly(p, dynamicTicks = TRUE) %>% layout(hovermode = "x")
 
-```
-
-
-```{r shiny county timeplot}
 
 ```
 
+
+```{r arima model with differencing}
+
+ozone_diff <- data.frame(date_local = harris_county$date_local[-1], diff = diff(harris_county$county_max))
+ggplot(ozone_diff, aes(diff)) + geom_histogram()
+
+p <- ozone_diff %>% ggplot(aes(date_local, diff)) +
+      geom_line(aes(color = "Difference")) +
+      geom_smooth(aes(color = "Smoothing funciton")) +
+      scale_color_manual(name = "legend", values = c("#69b3a2", "#00A9FF")) +
+      xlab("Date") +
+      ylab("Ozone Difference") +
+      ggtitle("Ozone Daily Change")
+ggplotly(p, dynamicTicks = TRUE) %>%  layout(hovermode = "x") 
+
+
+
+t.test(ozone_diff$diff)
+adf.test(ozone_diff$diff, k = 365)
+
+par(mfcol = c(2,1))
+Acf(ozone_diff$diff, lag.max = 720)
+Pacf(ozone_diff$diff, lag.max = 720)
+par(mfcol = c(1,1))
+
+```
+
+After differencing the data, 
+
+```{r percent change}
+
+ozone_perc_change <- data.frame(date_local = harris_county$date_local, perc_change = Delt(harris_county$county_max))
+ozone_perc_change <- ozone_perc_change %>% dplyr::rename(perc_change = Delt.1.arithmetic)
+ggplot(ozone_perc_change, aes(perc_change)) + geom_histogram()
+
+p <- ozone_perc_change %>% ggplot(aes(date_local, perc_change)) +
+      geom_line(aes(color = "Ozone Percent Increase")) +
+      geom_smooth(aes(color = "Smoothing funciton")) +
+      scale_color_manual(name = "legend", values = c("#69b3a2", "#00A9FF")) +
+      xlab("Date") +
+      ylab("Percent Increase") +
+      ggtitle("Ozone Percent Increase from Previous Day")
+ggplotly(p, dynamicTicks = TRUE) %>%  layout(hovermode = "x") 
+
+
+
+t.test(ozone_perc_change$perc_change)
+adf.test(ozone_perc_change$perc_change[-1], k = 365)
+
+par(mfcol = c(2,1))
+Acf(ozone_perc_change$perc_change, lag.max = 720)
+Pacf(ozone_perc_change$perc_change, lag.max = 720)
+par(mfcol = c(1,1))
+
+```
+
+
+
+```{r adjusting for seasonality}
+
+ozone_season <- data.frame(diff = diff(harris_county$county_max, lag = 365))
+ggplot(ozone_season, aes(diff)) + geom_histogram()
+
+p <- ozone_season %>% ggplot(aes(1:length(diff), diff)) +
+      geom_line(aes(color = "Difference")) +
+      geom_smooth(aes(color = "Smoothing funciton")) +
+      scale_color_manual(name = "legend", values = c("#69b3a2", "#00A9FF")) +
+      xlab("Date") +
+      ylab("Ozone Difference") +
+      ggtitle("Ozone Daily Change")
+ggplotly(p, dynamicTicks = TRUE) %>%  layout(hovermode = "x") 
+
+
+
+t.test(ozone_season$diff)
+adf.test(ozone_season$diff, k = 365)
+
+par(mfcol = c(2,1))
+Acf(ozone_season$diff, lag.max = 720)
+Pacf(ozone_season$diff, lag.max = 720)
+par(mfcol = c(1,1))
+
+```
 
 
 ```{r}
