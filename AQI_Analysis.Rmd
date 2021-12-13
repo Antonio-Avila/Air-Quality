@@ -212,19 +212,46 @@ p <- ozone_diff %>% ggplot(aes(date_local, diff)) +
 ggplotly(p, dynamicTicks = TRUE) %>%  layout(hovermode = "x") 
 
 
-
 t.test(ozone_diff$diff)
 adf.test(ozone_diff$diff, k = 365)
-Box.test(ozone_diff$diff, type = "Ljung", lag = 365)
+# Box.test(ozone_diff$diff, type = "Ljung", lag = 365)
 
 par(mfcol = c(2,1))
 Acf(ozone_diff$diff, lag.max = 720)
 Pacf(ozone_diff$diff, lag.max = 720)
 par(mfcol = c(1,1))
 
+
+# fit an arima model
+fit = auto.arima(ozone_diff$diff)
+fit
+pred = forecast(fit, 100)
+p <- ggplot(harris_county, aes(x = date_local)) +
+  geom_line(aes(y = county_max, color = "blue")) + 
+  geom_line(aes(y = c(78, pred$fitted + 78), color = "red")) +
+  scale_color_manual(name="Values",labels=c("Measured Values", "Predictions"), values=c("dodgerblue4", "firebrick4"))
+ggplotly(p, dynamicTicks = TRUE) %>% layout(hovermode = "x")
+
+p <- ggplot(harris_county, aes(x = date_local, y = pred$residuals)) +
+  geom_line() +
+  xlab("Date") + ylab("Residuals")
+ggplotly(p, dynamicTicks = TRUE) %>% layout(hovermode = "x")
 ```
 
-After differencing the data, 
+
+```{r}
+p <- harris_county %>% ggplot(aes(x = date_local)) +
+  geom_line(aes(y = county_max, color = "blue")) +
+  geom_line(aes(y = cumsum(c(78, pred$fitted)), color = "red")) +
+  scale_color_manual(name="Values",labels=c("Measured Values", "Predictions"), values=c("dodgerblue4", "firebrick4"))
+ggplotly(p, dynamicTicks = TRUE) %>% layout(hovermode = "x") %>% rangeslider()
+
+
+```
+
+Differencing the data yields some interesting results. Performing an Augmented Dickey-Fuller test shows the data is now stationary, but the Box-Ljung test suggests the 
+
+Time series analys relies around around the concept of the ideal scenario involving stationary data. Many of the results 
 
 ```{r percent change}
 
