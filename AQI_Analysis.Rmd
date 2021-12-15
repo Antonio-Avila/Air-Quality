@@ -201,6 +201,7 @@ ggplotly(p, dynamicTicks = TRUE) %>% layout(hovermode = "x")
 
 ozone_diff <- data.frame(date_local = harris_county$date_local[-1], diff = diff(harris_county$county_max))
 ggplot(ozone_diff, aes(diff)) + geom_histogram()
+ggplot(ozone_diff) + geom_line(aes(date_local, diff))
 
 p <- ozone_diff %>% ggplot(aes(date_local, diff)) +
   geom_line(aes(color = "Difference")) +
@@ -232,54 +233,17 @@ p <- ggplot(harris_county, aes(x = date_local)) +
   scale_color_manual(name="Values",labels=c("Measured Values", "Predictions"), values=c("dodgerblue4", "firebrick4"))
 ggplotly(p, dynamicTicks = TRUE) %>% layout(hovermode = "x")
 
-p <- ggplot(harris_county, aes(x = date_local, y = pred$residuals)) +
+p <- ggplot(ozone_diff, aes(x = date_local, y = pred$residuals)) +
   geom_line() +
   xlab("Date") + ylab("Residuals")
 ggplotly(p, dynamicTicks = TRUE) %>% layout(hovermode = "x")
 ```
 
-
-```{r}
-p <- harris_county %>% ggplot(aes(x = date_local)) +
-  geom_line(aes(y = county_max, color = "blue")) +
-  geom_line(aes(y = cumsum(c(78, pred$fitted)), color = "red")) +
-  scale_color_manual(name="Values",labels=c("Measured Values", "Predictions"), values=c("dodgerblue4", "firebrick4"))
-ggplotly(p, dynamicTicks = TRUE) %>% layout(hovermode = "x") %>% rangeslider()
-
-
-```
+Difference statistics are misleading. While hinting at stationarity and other wanteed atrributes in time series data, it performs awful and is no where near the actual values. 
 
 Differencing the data yields some interesting results. Performing an Augmented Dickey-Fuller test shows the data is now stationary, but the Box-Ljung test suggests the 
 
-Time series analys relies around around the concept of the ideal scenario involving stationary data. Many of the results 
-
-```{r percent change}
-
-ozone_perc_change <- data.frame(date_local = harris_county$date_local, perc_change = Delt(harris_county$county_max))
-ozone_perc_change <- ozone_perc_change %>% dplyr::rename(perc_change = Delt.1.arithmetic)
-ggplot(ozone_perc_change, aes(perc_change)) + geom_histogram()
-
-p <- ozone_perc_change %>% ggplot(aes(date_local, perc_change)) +
-      geom_line(aes(color = "Ozone Percent Increase")) +
-      geom_smooth(aes(color = "Smoothing funciton")) +
-      scale_color_manual(name = "legend", values = c("#69b3a2", "#00A9FF")) +
-      xlab("Date") +
-      ylab("Percent Increase") +
-      ggtitle("Ozone Percent Increase from Previous Day")
-ggplotly(p, dynamicTicks = TRUE) %>%  layout(hovermode = "x") 
-
-
-
-t.test(ozone_perc_change$perc_change)
-adf.test(ozone_perc_change$perc_change[-1], k = 365)
-Box.test(ozone_perc_change$perc_change[-1], type = "Ljung", lag = 365)
-
-par(mfcol = c(2,1))
-Acf(ozone_perc_change$perc_change, lag.max = 720)
-Pacf(ozone_perc_change$perc_change, lag.max = 720)
-par(mfcol = c(1,1))
-
-```
+Time series analysis relies around around the concept of the ideal scenario involving stationary data. Many of the results 
 
 
 
