@@ -18,7 +18,6 @@ library(forecast)
 library(plotly)
 library(rjson)
 library(forecast)
-library(shiny)
 library(tseries)
 library(quantmod)
 ```
@@ -124,6 +123,7 @@ daily_max_counties <- daily_max_sites %>%
   group_by(county, fips, date_local) %>% 
   summarise(county_max = max(max_8hr_avg, na.rm = TRUE))
 ```
+
 
 
 ```{r Harris county ozone lvl, include = FALSE}
@@ -301,9 +301,26 @@ daily_max_counties %>% filter(date_local == "2018-05-01") %>%
 
 
 
+```{r county average hourly}
+
+# hourly_avg <- 
+
+  head(ozone_texas) %>% group_by(county, date_local, time_local) %>% 
+              summarise(date_time = as.POSIXct(paste(date_local, time_local), format = "%Y-%m-%d %H:%M"), 
+                        hourly_avg = mean(sample_measurement, na.rm = TRUE) * 1000)
+                                                                                                        
+
+
+```
 
 
 
+```{r}
+
+hourly_avg %>% group_by(county, date_local) %>% filter(county == "Harris") %>% ggplot(aes(date)
+                                                                                      
+                                                                                      
+```
 
 
 
