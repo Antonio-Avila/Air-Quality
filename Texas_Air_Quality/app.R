@@ -1,8 +1,43 @@
 # This app is meant to run as a dashboard for my Air Quality Index Dashboard. 
 
 library(shiny)
+library(tidyverse)
+library(usmap)
+library(plotly)
 
-# Define UI for application that draws a histogram
+
+#------------- Begin by importing data and preprocessing 
+ozone_texas <- read_csv("ozone_texas.csv")
+ozone_texas["fips"] <- as.integer(ozone_texas$state_code) * 1000 + as.integer(ozone_texas$county_code)
+
+# Define functions to calculate the 8-hour maximum as per EPA ozone standard.
+avg_8hr <- function(data){
+  avgs = matrix(nrow = 24-8, ncol = 1)
+  for(i in 1:(24-8)) { 
+    avgs[i] = mean(data[i:(i+7)], na.rm = TRUE)
+  }
+  return(avgs)
+}
+
+max_8hr_avg <- function(data){
+  max_avg = max(avg_8hr(data)) * 1000
+  max_avg = trunc(max_avg)
+  return(max_avg)
+}
+
+daily_max_sites <- ozone_texas %>% 
+  group_by(county, fips, site_number, date_local) %>% 
+  summarize(max_8hr_avg = max_8hr_avg(sample_measurement))
+
+
+daily_max_counties <- daily_max_sites %>%
+  group_by(county, fips, date_local) %>% 
+  summarise(county_max = max(max_8hr_avg, na.rm = TRUE))
+
+
+
+
+# Define UI 
 ui <- fluidPage(
   
   titlePanel("Texas Air Quality"),
@@ -19,7 +54,7 @@ ui <- fluidPage(
 
 )
 
-# Define server logic required to draw a histogram
+# Define server l
 server <- function(input, output, session) {
 
 }
