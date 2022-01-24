@@ -20,6 +20,7 @@ library(rjson)
 library(forecast)
 library(tseries)
 library(quantmod)
+library(maps)
 ```
 
 ## R Markdown
@@ -114,14 +115,16 @@ max_8hr_avg <- function(data){
 ```
 
 
+
 ```{r find daily max avg per county}
 daily_max_sites <- ozone_texas %>% 
   group_by(county, fips, site_number, date_local) %>% 
-  summarize(max_8hr_avg = max_8hr_avg(sample_measurement))
+  summarize(max_8hr_avg = max_8hr_avg(sample_measurement)) %>% ungroup()
 
 daily_max_counties <- daily_max_sites %>%
   group_by(county, fips, date_local) %>% 
-  summarise(county_max = max(max_8hr_avg, na.rm = TRUE))
+  summarise(county_max = max(max_8hr_avg, na.rm = TRUE)) %>% ungroup()
+daily_max_counties[is.infinite(daily_max_counties$county_max),]$county_max <- NA
 ```
 
 
@@ -145,11 +148,11 @@ daily_max_counties <- daily_max_sites %>%
 
 p <- daily_max_counties %>% filter(county == "Harris") %>% 
   ggplot(aes(date_local, county_max)) + 
-    geom_line(aes(color="8-Hr Max Avg Ozone")) + 
+    geom_line(aes(color = "8-Hr Max Avg Ozone")) + 
     geom_hline(yintercept = 70, color = "red") +
     geom_smooth(method = "gam", se = FALSE, aes(color = "Local Model")) + 
     geom_smooth(method = "lm", aes(color = "Trend"), se = FALSE) +
-    ggtitle("Harris County Ozone levels 2017-2021") +
+    ggtitle( paste("Harris", "County Ozone levels 2017-2021")) +
     xlab("Date") +
     ylab("Ozone 8-Hr Max (ppb)") +
     annotate("text", x = as.Date("2018-01-01"), y = 71, label = "Unhealthy Level") +
@@ -170,7 +173,185 @@ Pacf(harris_county$county_max, lag.max = 720)
 par(mfcol = c(1,1))
 ```
 
+
+
 Even though there is some variability throughout the time period in the daily, maximum 8-hour ozone levels, the plot suggests there may be a slight downward trend. Fitting a linear model to the time series data rejects this notion. The p-value for the coefficient corresponding to the date yields a value of 0.47, meaning the coefficient and thus variable is not statistically significant. There is no evidence to suggest a statistically significant decrease in ozone levels with time. Granted, this model cannot be used for anything other than determining a trend since it is a very poor fit for the data. The data is obviously non-linear with some seasonality sprinkled in there, which makes sense since ozone levels should increase during summer periods. 
+
+
+#----------------------  Mapping  ----------------------
+
+
+
+```{r}
+start_time <- Sys.time()
+
+
+test_day <- daily_max_counties %>% filter(date_local == "2017-09-03")
+county_df <- us_map("county") %>% filter(full == "Texas") %>% rename(state = full)
+county_df$county <- str_replace(county_df$county, " County", "")
+county_df <- left_join(county_df, test_day, by = "county")
+
+p <-  plot_usmap(include = "TX") +
+        geom_polygon(data = county_df, color = "black",
+                    aes(x = x, y = y, group = group, fill = county_max,
+                        text = paste("County:", county, "<br>Ozone:", county_max))) +
+        scale_fill_gradient2(low = "green", high = "red", midpoint = 65, mid = "orange", limits = c(0, 120)) +
+        labs(fill = "Ozone Level")
+
+ggplotly(p, tooltip = "text", height = 200, width = 200)
+
+
+Sys.time() - start_time
+
+```
+
+
+```{r plotly map with geojson}
+# url <- 'https://raw.githubusercontent.com/plotly/datasets/master/geojson-counties-fips.json'
+# counties <- rjson::fromJSON(file=url)
+
+# test_day = daily_max_counties %>% filter(date_local == "2020-01-01") %>% select(county, fips, county_max)
+# g <- list(
+#   scope = 'usa',
+#   projection = list(type = 'albers usa'),
+#   showlakes = TRUE,
+#   showland = TRUE,
+#   lakecolor = toRGB('blue'), 
+#   landcolor = toRGB("grey90")
+#   
+# )
+# 
+# fig <- plot_ly()
+# fig <- fig %>% add_trace(
+#     type = "choropleth",
+#     geojson = counties,
+#     locations = test_day$fips,
+#     z = test_day$county_max,
+#     zmin = 0,  
+#     marker = list(line = list(width = 0))
+#   )
+# 
+# fig <- fig %>% colorbar(title = "Ozone Level")
+# fig <- fig %>% layout(title = "Ozone Level by County")
+# 
+# fig <- fig %>% layout(
+#     geo = g
+#   )
+# 
+# fig
+
+```
+
+
+```{r plotly map but with maps data}
+start_time <- Sys.time()
+
+
+test_day = daily_max_counties %>% filter(date_local == "2021-03-17") %>% select(county, fips, county_max)
+#
+county_df <- map_data("county") %>% filter(region == "texas")
+county_df <- county_df %>% rename(state = region, county = subregion)
+state_df <- map_data("state") %>% filter(region == "texas")
+state_df <- state_df %>% rename(state = region, county = subregion)
+
+county_data <- test_day %>% mutate(county = tolower(county)) %>%
+  left_join(county_df, ., by = "county")
+
+p <- ggplot(data = state_df, aes(long, lat, group = group)) +
+        coord_fixed(1.15) +
+        geom_polygon(fill = "gray")  +
+        geom_polygon(data = county_data, color = "black", aes(fill = county_max, text = paste("County:", tools::toTitleCase(county), "<br>Ozone:", county_max))) +
+        scale_fill_gradient(low = "green", high = "red", labels = "70 (High)", breaks = 70) +
+        geom_polygon(color = "black", fill = NA) + 
+        theme_void()
+
+ggplotly(p, tooltip = "text")
+
+Sys.time() - start_time
+
+```
+
+
+
+#-------------------  Hourly Analysis Viability -------------------------
+
+
+```{r county average hourly}
+
+hourly_avg <- ozone_texas %>% group_by(county, date_local, time_local) %>% 
+              summarise( # date_time = as.POSIXct(paste(date_local, time_local), format = "%Y-%m-%d %H:%M"), 
+                        hourly_avg = mean(sample_measurement, na.rm = TRUE) * 1000)
+                                                                                                        
+daily_avg <- ozone_texas %>% group_by(county, date_local) %>% 
+              summarise( # date_time = as.POSIXct(paste(date_local, time_local), format = "%Y-%m-%d %H:%M"), 
+                        daily_avg = mean(sample_measurement, na.rm = TRUE) * 1000)
+
+```
+
+
+
+```{r}
+
+hourly_harris <- hourly_avg %>% filter(county == "Harris") %>%
+      mutate(date_time = as.POSIXct(paste(date_local, time_local), format = "%Y-%m-%d %H:%M"))
+
+p <- hourly_harris %>% ggplot(aes(x = date_time, y = hourly_avg)) +
+       geom_line(color = "blue")
+ggplotly(p, dynamicTicks = TRUE) %>% rangeslider() %>% layout(hovermode = "x")
+
+
+
+
+daily_harris <- daily_avg %>% filter(county == "Harris") %>% ungroup()
+
+p <- daily_harris %>% ggplot(aes(x = date_local, y = daily_avg)) +
+       geom_line(color = "blue")
+ggplotly(p, dynamicTicks = TRUE) %>% rangeslider() %>% layout(hovermode = "x")
+
+```
+
+
+
+```{r 8hr max avg vs daily avg}
+
+p <- daily_harris %>% ggplot(aes(x = date_local)) +
+       geom_line(aes(y = daily_avg), color = "red") +
+       geom_line(aes(y = harris_county$county_max), color = "purple")
+ggplotly(p, dynamicTicks = TRUE) %>% rangeslider() %>% layout(hovermode = "x")
+
+cor(harris_county$county_max, daily_harris$daily_avg)
+is.na(ozone_texas$sample_measurement) %>% sum() / nrow(ozone_texas)
+```
+
+
+Out of curiosity, I decided to explore whether using the daily average ozone levels would be a better value to try to form a predictive model with. Given that the ozone values will not be maximized, I expect the daily averages to exhibit a smoother transition from day to day when compared to the daily maximum 8-hour average. Comparing the 2 values with respect to time shows they display similar trends, with some exceptions. There are a few days where there are significantly higher spikes from the previous day compared to the increase in daily average. Overall, at first glance there doesnt seem to be a clear reason to prefer the daily average over the maximum 8-hr average given their similarity and high correlation. 
+
+That does leave us with the question of whether we should consider modeling the hourly ozone levels. The glaring downsides of this approach are that there are missing values from sites on certain days and the computational cost of modeling 24 times the data (more of a limitation on my computer's part)
+
+
+
+# Counting the number of days the max 8hr avg was in unhealhy territory
+
+## Option 1 is to simply count the number of days, but that would be for the 3 year span.
+## May be better to get the year from the date column, group the values by year, and count the number of violations per year to display in the shiny app with the trend plot
+
+
+```{r ozone violations}
+
+daily_max_counties %>% mutate(year = year(date_local)) %>% group_by(county, year) %>% 
+  summarize(num_unhealthy = sum(county_max >= 70)) %>% 
+  ungroup() %>% group_by(county) %>% mutate(total_violations = sum(num_unhealthy))
+  
+
+```
+
+
+```{r}
+stop()
+```
+
+#-------------------------  Modeling  -------------------------#
+
 
 Next, I will attempt to fit a model the data using a more appropriate method. The classical approach to time series data is to model it using an ARIMA model, or some variation of it, to forecast with it. 
 
@@ -273,61 +454,3 @@ Pacf(ozone_season$diff, lag.max = 720)
 par(mfcol = c(1,1))
 
 ```
-
-
-```{r}
-
-p <- daily_max_counties %>% filter(date_local == "2020-05-01") %>% 
-  plot_usmap(regions = "counties", include = "TX", data = ., values = "county_max") +
-    scale_fill_gradient(low = "green", high = "red", labels = "high", breaks = 70)
-ggplotly(p) 
-
-
-daily_max_counties %>% filter(date_local == "2018-05-01") %>% 
-  plot_usmap(regions = "counties", include = "TX", data = ., values = "county_max") +
-    scale_fill_gradient(low = "green", high = "red",  labels = "high", breaks = 70)
-
-```
-
-
-
-
-
-
-
-
-
-
-
-
-
-```{r county average hourly}
-
-# hourly_avg <- 
-
-  head(ozone_texas) %>% group_by(county, date_local, time_local) %>% 
-              summarise(date_time = as.POSIXct(paste(date_local, time_local), format = "%Y-%m-%d %H:%M"), 
-                        hourly_avg = mean(sample_measurement, na.rm = TRUE) * 1000)
-                                                                                                        
-
-
-```
-
-
-
-```{r}
-
-hourly_avg %>% group_by(county, date_local) %>% filter(county == "Harris") %>% ggplot(aes(date)
-                                                                                      
-                                                                                      
-```
-
-
-
-
-
-
-
-
-
-
