@@ -118,7 +118,7 @@ max_8hr_avg <- function(data){
 
 ```{r find daily max avg per county}
 daily_max_sites <- ozone_texas %>% 
-  group_by(county, fips, site_number, date_local) %>% 
+  group_by(longitude, latitude, county, fips, site_number, date_local) %>% 
   summarize(max_8hr_avg = max_8hr_avg(sample_measurement)) %>% ungroup()
 
 daily_max_counties <- daily_max_sites %>%
@@ -186,7 +186,7 @@ Even though there is some variability throughout the time period in the daily, m
 start_time <- Sys.time()
 
 
-test_day <- daily_max_counties %>% filter(date_local == "2017-09-03")
+test_day <- daily_max_counties %>% filter(date_local == "2017-09-13")
 county_df <- us_map("county") %>% filter(full == "Texas") %>% rename(state = full)
 county_df$county <- str_replace(county_df$county, " County", "")
 county_df <- left_join(county_df, test_day, by = "county")
@@ -195,14 +195,13 @@ p <-  plot_usmap(include = "TX") +
         geom_polygon(data = county_df, color = "black",
                     aes(x = x, y = y, group = group, fill = county_max,
                         text = paste("County:", county, "<br>Ozone:", county_max))) +
-        scale_fill_gradient2(low = "green", high = "red", midpoint = 65, mid = "orange", limits = c(0, 120)) +
+        scale_fill_gradient2(low = "green", high = "red", midpoint = 75, mid = "#ff9200", limit = c(0, 120)) +
         labs(fill = "Ozone Level")
 
-ggplotly(p, tooltip = "text", height = 200, width = 200)
+ggplotly(p, tooltip = "text")
 
 
 Sys.time() - start_time
-
 ```
 
 
