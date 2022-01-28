@@ -21,6 +21,7 @@ library(forecast)
 library(tseries)
 library(quantmod)
 library(maps)
+library(RColorBrewer)
 ```
 
 ## R Markdown
@@ -64,6 +65,23 @@ state_codes <- aqs_states()
 # print(proc.time() - start_time)
 # beep()
 
+```
+
+
+```{r extract pm2.5 data}
+start_time = proc.time()
+pm2.5_texas_2020 <- aqs_sampledata_by_state(parameter = "88101",
+                                           bdate = as.Date("20200901",
+                                                           format="%Y%m%d"
+                                                           ),
+                                           edate = as.Date("20210901",
+                                                          format = "%Y%m%d"),
+                                           stateFIPS = "48"
+                                          )
+write_csv(pm2.5_texas_2020, "pm2.5_texas_2020.csv")
+print("Time to Execute:")
+print(proc.time() - start_time)
+beep()
 ```
 
 
@@ -125,6 +143,8 @@ daily_max_counties <- daily_max_sites %>%
   group_by(county, fips, date_local) %>% 
   summarise(county_max = max(max_8hr_avg, na.rm = TRUE)) %>% ungroup()
 daily_max_counties[is.infinite(daily_max_counties$county_max),]$county_max <- NA
+
+# write_csv(daily_max_counties, "daily_max_counties.csv")
 ```
 
 
@@ -182,11 +202,12 @@ Even though there is some variability throughout the time period in the daily, m
 
 
 
-```{r}
+```{r ozone heat map}
 start_time <- Sys.time()
 
+palette <- brewer.pal(11, "RdYlGn")
 
-test_day <- daily_max_counties %>% filter(date_local == "2017-09-13")
+test_day <- daily_max_counties %>% filter(date_local == "2018-08-27")
 county_df <- us_map("county") %>% filter(full == "Texas") %>% rename(state = full)
 county_df$county <- str_replace(county_df$county, " County", "")
 county_df <- left_join(county_df, test_day, by = "county")
@@ -195,7 +216,8 @@ p <-  plot_usmap(include = "TX") +
         geom_polygon(data = county_df, color = "black",
                     aes(x = x, y = y, group = group, fill = county_max,
                         text = paste("County:", county, "<br>Ozone:", county_max))) +
-        scale_fill_gradient2(low = "green", high = "red", midpoint = 75, mid = "#ff9200", limit = c(0, 120)) +
+        # scale_fill_gradient2(low = "green", high = "red", mid = "orange", midpoint = 65, limit = c(0, 120)) +
+        scale_fill_gradientn(colors = rev(palette),  limit = c(0, 120)) +
         labs(fill = "Ozone Level")
 
 ggplotly(p, tooltip = "text")
@@ -274,6 +296,9 @@ Sys.time() - start_time
 
 #-------------------  Hourly Analysis Viability -------------------------
 
+Out of curiosity, I decided to explore whether using the daily average ozone levels would be a better value to try to form a predictive model with. Given that the ozone values will not be maximized, I expect the daily averages to exhibit a smoother transition from day to day when compared to the daily maximum 8-hour average. Comparing the 2 values with respect to time shows they display similar trends, with some exceptions. There are a few days where there are significantly higher spikes from the previous day compared to the increase in daily average. Overall, at first glance there doesnt seem to be a clear reason to prefer the daily average over the maximum 8-hr average given their similarity and high correlation. 
+
+That does leave us with the question of whether we should consider modeling the hourly ozone levels. The glaring downsides of this approach are that there are missing values from sites on certain days and the computational cost of modeling 24 times the data (more of a limitation on my computer's part)
 
 ```{r county average hourly}
 
@@ -323,16 +348,13 @@ is.na(ozone_texas$sample_measurement) %>% sum() / nrow(ozone_texas)
 ```
 
 
-Out of curiosity, I decided to explore whether using the daily average ozone levels would be a better value to try to form a predictive model with. Given that the ozone values will not be maximized, I expect the daily averages to exhibit a smoother transition from day to day when compared to the daily maximum 8-hour average. Comparing the 2 values with respect to time shows they display similar trends, with some exceptions. There are a few days where there are significantly higher spikes from the previous day compared to the increase in daily average. Overall, at first glance there doesnt seem to be a clear reason to prefer the daily average over the maximum 8-hr average given their similarity and high correlation. 
-
-That does leave us with the question of whether we should consider modeling the hourly ozone levels. The glaring downsides of this approach are that there are missing values from sites on certain days and the computational cost of modeling 24 times the data (more of a limitation on my computer's part)
 
 
 
-# Counting the number of days the max 8hr avg was in unhealhy territory
+ Counting the number of days the max 8hr avg was in unhealhy territory
 
-## Option 1 is to simply count the number of days, but that would be for the 3 year span.
-## May be better to get the year from the date column, group the values by year, and count the number of violations per year to display in the shiny app with the trend plot
+- Option 1 is to simply count the number of days, but that would be for the 3 year span.
+- May be better to get the year from the date column, group the values by year, and count the number of violations per year to display in the shiny app with the trend plot
 
 
 ```{r ozone violations}
