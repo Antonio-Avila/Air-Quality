@@ -69,19 +69,19 @@ state_codes <- aqs_states()
 
 
 ```{r extract pm2.5 data}
-start_time = proc.time()
-pm2.5_texas_2020 <- aqs_sampledata_by_state(parameter = "88101",
-                                           bdate = as.Date("20200901",
-                                                           format="%Y%m%d"
-                                                           ),
-                                           edate = as.Date("20210901",
-                                                          format = "%Y%m%d"),
-                                           stateFIPS = "48"
-                                          )
-write_csv(pm2.5_texas_2020, "pm2.5_texas_2020.csv")
-print("Time to Execute:")
-print(proc.time() - start_time)
-beep()
+# Sys.sleep(120)
+# start_time = Sys.time()
+# pm2.5_texas <- aqs_sampledata_by_state(parameter = "88101",
+#                                            bdate = as.Date("20170901",
+#                                                            format="%Y%m%d"
+#                                                            ),
+#                                            edate = as.Date("20180901",
+#                                                           format = "%Y%m%d"),
+#                                            stateFIPS = "48"
+#                                           )
+# write_csv(pm2.5_texas, "pm2.5_texas_2017.csv")
+# Sys.time() - start_time
+# beep()
 ```
 
 
@@ -93,14 +93,29 @@ beep()
 # ozone_texas_17_18 <- read_csv("ozone_texas_17_18.csv")
 # 
 # ozone_texas <- union(union(union(ozone_texas_17_18, ozone_texas_18_19), ozone_texas_19_20), ozone_texas_20_21)
-# 
 # write_csv(ozone_texas, "ozone_texas.csv")
+# 
+# pm2.5_texas_2020 <- read_csv("pm2.5_texas_2020.csv")
+# pm2.5_texas_2019 <- read_csv("pm2.5_texas_2019.csv")
+# pm2.5_texas_2018 <- read_csv("pm2.5_texas_2018.csv")
+# pm2.5_texas_2017 <- read_csv("pm2.5_texas_2017.csv")
+
+# pm2.5_texas <- bind_rows(pm2.5_texas_2017, pm2.5_texas_2018, pm2.5_texas_2019, pm2.5_texas_2020) %>% distinct(.keep_all = TRUE)
+# write_csv(pm2.5_texas, "pm2.5_texas.csv")
 
 ozone_texas <- read_csv("ozone_texas.csv")
 ozone_texas["fips"] <- as.integer(ozone_texas$state_code) * 1000 + as.integer(ozone_texas$county_code)
+ozone_texas["date_time_local"] <- ymd(ozone_texas$date_local) + hms(ozone_texas$time_local)
+
+
+pm2.5_texas <- read_csv("pm2.5_texas.csv")
+pm2.5_texas["fips"] <- as.integer(pm2.5_texas$state_code) * 1000 + as.integer(pm2.5_texas$county_code)
+pm2.5_texas["date_time_local"] <- ymd(pm2.5_texas$date_local) + hms(pm2.5_texas$time_local)
 
 ```
 
+
+#---------------------------------------------------- Ozone Analysis ----------------------------------------------------#
 
 ```{r function for 8 hour ozone avg}
 
@@ -141,15 +156,15 @@ daily_max_sites <- ozone_texas %>%
 
 daily_max_counties <- daily_max_sites %>%
   group_by(county, fips, date_local) %>% 
-  summarise(county_max = max(max_8hr_avg, na.rm = TRUE)) %>% ungroup()
-daily_max_counties[is.infinite(daily_max_counties$county_max),]$county_max <- NA
+  summarise(ozone_avg = max(max_8hr_avg, na.rm = TRUE)) %>% ungroup()
+daily_max_counties[is.infinite(daily_max_counties$ozone_avg),]$ozone_avg <- NA
 
-# write_csv(daily_max_counties, "daily_max_counties.csv")
+# write_csv(daily_max_counties, "ozone_daily_max_counties.csv")
 ```
 
 
 
-```{r Harris county ozone lvl, include = FALSE}
+```{r Harris county ozone trend plot, include = FALSE}
 
 # Normal gpplot, but working towards turning it into an interactive plot_ly plot 
 
@@ -184,7 +199,7 @@ summary(ozone_lm)
 
 
 # Some statistics
-adf.test(harris_county$county_max, k =365)
+adf.test(harris_county$county_max, k = 365)
 Box.test(harris_county$county_max, type = "Ljung", lag = 365)
 
 par(mfcol = c(2,1))
@@ -344,7 +359,7 @@ p <- daily_harris %>% ggplot(aes(x = date_local)) +
 ggplotly(p, dynamicTicks = TRUE) %>% rangeslider() %>% layout(hovermode = "x")
 
 cor(harris_county$county_max, daily_harris$daily_avg)
-is.na(ozone_texas$sample_measurement) %>% sum() / nrow(ozone_texas)
+is.na(ozone_texas$s;ample_measurement) %>% sum() / nrow(ozone_texas)
 ```
 
 
@@ -441,7 +456,7 @@ p <- ggplot(ozone_diff, aes(x = date_local, y = pred$residuals)) +
 ggplotly(p, dynamicTicks = TRUE) %>% layout(hovermode = "x")
 ```
 
-Difference statistics are misleading. While hinting at stationarity and other wanteed atrributes in time series data, it performs awful and is no where near the actual values. 
+Difference statistics are misleading. While hinting at stationarity and other wanted attributes in time series data, it performs awful and is no where near the actual values. 
 
 Differencing the data yields some interesting results. Performing an Augmented Dickey-Fuller test shows the data is now stationary, but the Box-Ljung test suggests the 
 
@@ -475,3 +490,173 @@ Pacf(ozone_season$diff, lag.max = 720)
 par(mfcol = c(1,1))
 
 ```
+
+
+
+
+#---------------------------------------------------- PM2.5 Analysis ----------------------------------------------------#
+
+When first exploring the data, I discovered that PM2.5 measurements were not being taken consistently initially. The reason for this is that in Texas there weren't many sites recording PM2.5 data in 2018 but have since quadrupled to about 40 sites in 2021. 
+
+```{r number of sites}
+p <- pm2.5_texas[!is.na(pm2.5_texas$sample_measurement), ] %>% group_by(date_local) %>% summarise(n = n_distinct(site_number)) %>% 
+  ggplot(aes(date_local, n)) + 
+    geom_point() +
+    geom_smooth(se = FALSE) +
+    labs(title = "Number of Sites recording PM2.5 Data") +
+    xlab("Date") + ylab("Number of Sites")
+ggplotly(p, dynamicTicks = TRUE)
+```
+
+
+Next, I thought it would be beneficial to look at how the PM2.5 levels on average evolve throughout the day to look for any trends.  As expected, levels tend to peak twice, first around 9:00 A.M. then again at 8:00 - 9:00 P.M. but to a lesser extent. This make sense since it lines up with the commute times of people going into work and back home. This does not reflect or display any seasonal differences that may be present which is something I want to look into in the future.
+
+
+```{r avergage pm2.5 throughout day}
+
+pm2.5_texas %>% group_by(time_local) %>% 
+  summarize(hourly_avg = mean(sample_measurement, na.rm = TRUE), hourly_med = median(sample_measurement, na.rm = TRUE)) %>% 
+      ggplot(aes(time_local)) + geom_line(aes(y = hourly_avg)) + geom_line(aes(y = hourly_med), color = "blue")
+
+```
+
+
+
+Need to continue investigating why there are negative values (likely due to equipment malfunction or dropping values below detection limit)
+```{r investigate data quality}
+
+weird_vals <- pm2.5_texas %>% filter(sample_measurement < 0)
+weird_vals %>% select(county, site_number, date_local, sample_measurement) %>% head(20)
+
+
+weird_vals %>% count(county, site_number)  
+weird_vals %>% count(qualifier)
+```
+
+
+
+In reality, it is impossible to have negative particulate matter (PM2.5) levels. So it is likely the values are due to some kind of recording error caused by the machine. After a little investigation, I noticed that outages or malfunctions are cataloged and the values are removed when the data is being verified. Typically there are notes included for data removal. The EPA does allow monitoring sites to report negative values so long as they are above a certain threshold (> -10 ug/m3), for data reported to the AQS database. However, it does not specify what should be done with the data when analyzing. 
+
+After much digging, the only information I found on negative particulate matter measurements came from a National Ambient Air Monitoring Conference in 2016 hosted by the EPA. 
+According to the conference, negative values can occur as the measurements fall below the detection limit of the device and approach 0.  They should be reported by monitoring sites but should not be included in public reports. Moreover, excluding those points or replacing them with 0 would lead to an increase in bias in the data. Perhaps a compromise would be to replace the negative values with half of the detection limit. 
+
+
+```{r replace negatives with half DL}
+
+# Code to replace negative values
+
+```
+
+
+
+Now onto investigating missing values and what their qualifiers denote about the data.
+
+As suspected, the reason why values are missing are logged appropriately, which makes my life so much easier since I dont have to investigate potential causes. On the other hand, there are values that are recorded that have some kind of qualifier, such as African dust being present or construction occuring near the instrument. I wonder if these are inflating the PM2.5 values. 
+
+```{r qualifiers}
+
+# missing_vals <- pm2.5_texas %>% filter(is.na(sample_measurement))
+# missing_vals %>% select(county, site_number, date_local, sample_measurement, qualifier) %>% count(qualifier) %>% View()
+
+pm2.5_texas %>% count(missing_val = is.na(sample_measurement), qualifier) %>% 
+  ggplot(aes(x = qualifier, y = n, fill = missing_val)) +
+    # facet_grid(rows = vars(missing_val)) +
+    geom_bar(stat = "identity", position = "dodge") +
+    coord_flip()
+
+
+# Excldue the non-missing values without a qualifier, the vast majority of samples
+pm2.5_texas %>% count(missing_val = is.na(sample_measurement), qualifier) %>% filter(!is.na(qualifier)) %>% 
+  ggplot(aes(x = qualifier, y = n, fill = missing_val)) +
+    # facet_grid(rows = vars(missing_val)) +
+    geom_bar(stat = "identity", position = "stack") +
+    coord_flip()
+pm2.5_texas %>% count(missing_val = is.na(sample_measurement), qualifier) %>% filter(!is.na(qualifier), missing_val == FALSE)
+
+
+# 
+# pm2.5_texas %>% group_by(date_local, county, site_number) %>% count(!is.na(qualifier))
+# 
+# pm2.5_texas %>% filter(county == "Harris", sample_duration == "1 HOUR") %>% 
+#   ggplot(aes(x = date_local, y = sample_measurement)) +
+#     geom_line()
+
+```
+
+
+```{r pm2.5 for non-missing data with qualifier}
+
+pm2.5_texas %>% filter(!is.na(sample_measurement), !is.na(qualifier)) %>% count(qualifier)
+
+p <- pm2.5_texas %>%  filter(county == "Harris") %>% 
+  ggplot(aes(x = ymd(date_local) + hms(time_local), y = sample_measurement)) + 
+      geom_line(aes(color = site_number))
+ggplotly(p, dynamicTicks = TRUE)
+
+```
+
+
+Unhealthy levels for sensitive groups occur at levels higher than 35, but for everyone in general, it is unsafe when levels reach 55.
+
+```{r high pm levels}
+
+pm2.5_texas %>% filter(sample_measurement > 55) %>% arrange(desc(sample_measurement)) %>% View()
+
+```
+
+
+```{r}
+pm2.5_texas %>% filter(qualifier == "X - Filter Temperature Difference or Average out of Spec.") %>% count(sample_frequency)
+```
+
+
+
+
+
+```{r daily average pm2.5}
+
+daily_avg_pm2.5_site <- pm2.5_texas %>% filter(sample_duration == "1 HOUR", sample_frequency == "HOURLY") %>% 
+  group_by(longitude, latitude, county, fips, site_number, date_local) %>% 
+  summarize(site_avg = mean(sample_measurement, na.rm = TRUE)) %>% ungroup()
+
+
+daily_avg_pm2.5_county <- daily_avg_pm2.5_site %>% group_by(county, fips, date_local) %>% 
+  summarise(pm2.5_avg = max(site_avg, na.rm = TRUE)) %>% ungroup()
+
+
+# write_csv(daily_avg_pm2.5_county, "pm2.5_daily_avg_counties.csv")
+
+```
+
+
+
+```{r pm trend}
+
+# Harris County
+p <- daily_avg_pm2.5_county %>% filter(county == "Harris") %>% 
+        ggplot(aes(x = date_local, y = county_avg)) + 
+          geom_line(aes(color = "PM2.5 Daily Avg")) +
+          geom_hline(yintercept = 12, color = "red") +
+          geom_smooth(method = "gam", aes(color = "Trend"), se = FALSE) +
+          ggtitle("Harris County PM2.5 Levels from 2017-2021") +
+          xlab("Date") +
+          ylab("PM2.5 Concentration (ug/m3)") +
+          annotate("text", x = as.Date("2018-08-08"), y = 13, label = "High") +
+          scale_color_manual(name = "Legend", values = c("#69b3a2", "purple"))
+
+ggplotly(p, dynamicTicks = TRUE) %>% rangeslider() %>% layout(hovermode = "x")
+
+data <- daily_avg_pm2.5_county %>% filter(county == "Harris") %>% select(county_avg) %>% drop_na() 
+shapiro.test(log(data[[1]]))
+ks.test(log(data[[1]]), "pnorm")
+jarque.bera.test(log(data[[1]]))
+
+t.test(x = log(data), mu = log(12), alternative = "greater")
+wilcox.test(x = data[[1]], mu = 12, alternative = "greater")
+
+
+sim_norm = rnorm(nrow(data), mean(log(data[[1]])), sd(log(data[[1]])))
+data %>% ggplot(aes(log(county_avg))) + geom_histogram(fill = alpha("red", 0.5)) + geom_histogram(aes(sim_norm), fill = alpha("blue", 0.3))
+
+```
+
