@@ -551,7 +551,7 @@ According to the conference, negative values can occur as the measurements fall 
 
 Now onto investigating missing values and what their qualifiers denote about the data.
 
-As suspected, the reason why values are missing are logged appropriately, which makes my life so much easier since I dont have to investigate potential causes. On the other hand, there are values that are recorded that have some kind of qualifier, such as African dust being present or construction occuring near the instrument. I wonder if these are inflating the PM2.5 values. 
+As suspected, the reason why values are missing are logged appropriately, which makes my life so much easier since I dont have to investigate potential causes. On the other hand, there are values that are recorded that have some kind of qualifier, such as African dust being present or construction occurring near the instrument. I wonder if these are inflating the PM2.5 values. 
 
 ```{r qualifiers}
 
@@ -565,7 +565,7 @@ pm2.5_texas %>% count(missing_val = is.na(sample_measurement), qualifier) %>%
     coord_flip()
 
 
-# Excldue the non-missing values without a qualifier, the vast majority of samples
+# Exclude the non-missing values without a qualifier, the vast majority of samples
 pm2.5_texas %>% count(missing_val = is.na(sample_measurement), qualifier) %>% filter(!is.na(qualifier)) %>% 
   ggplot(aes(x = qualifier, y = n, fill = missing_val)) +
     # facet_grid(rows = vars(missing_val)) +
@@ -583,32 +583,91 @@ pm2.5_texas %>% count(missing_val = is.na(sample_measurement), qualifier) %>% fi
 
 ```
 
+There seems to be 22 types of qualifiers which lead to whether a sample measurement is recorded or not. Some of the qualifiers do correspond with sensible reasons to exclude a measurement, whether it be machine errors, maintenance, the machine not recording data, etc. Meanwhile, other types seem to be reasons for the measurements to be potentially elevated, such as African dust, construction nearby, outliers, etc. The qualifiers seem to be mutually exclusice in regards to whether the data was missing or not. 
+
+The most interesting thing the qualifiers reveal is while these event do affect particulate matter levels and push them to unhealthy levels, they dont elevate them to extraordinary levels. In fact, the all of the high values (i.e. over 100 um/3) correspond to the no qualifier category. About half of the categories do elevate the particulate matter levels more than the average day would. Fires, African dust, and samples measured as outliers have a higher level on average.
 
 ```{r pm2.5 for non-missing data with qualifier}
 
-pm2.5_texas %>% filter(!is.na(sample_measurement), !is.na(qualifier)) %>% count(qualifier)
+pm2.5_texas %>% filter(!is.na(sample_measurement), !is.na(qualifier)) %>% group_by(qualifier) %>% summarize(qual_mean = mean(sample_measurement), qual_sd = sd(sample_measurement))
 
+# Boxplot for qualifiers whos values are measured, excluding those with no qualifier (normal values)
+pm2.5_texas %>% filter(!is.na(sample_measurement), !is.na(qualifier)) %>% 
+  ggplot(aes(x = sample_measurement, y = qualifier, fill = qualifier)) + 
+    geom_boxplot() + 
+    theme(legend.position = "none")
+
+# Boxplot for all values categorized by their qualifiers
+pm2.5_texas %>% filter(!is.na(sample_measurement)) %>% 
+  ggplot(aes(x = sample_measurement, y = qualifier, fill = qualifier)) + 
+    geom_boxplot() + 
+    theme(legend.position = "none")
+
+# Same as plot above but truncated to better compare (excluding outliers)
+pm2.5_texas %>% filter(!is.na(sample_measurement), sample_measurement < 100) %>% 
+  ggplot(aes(x = sample_measurement, y = qualifier, fill = qualifier)) + 
+    geom_boxplot() + 
+    theme(legend.position = "none")
+
+
+# Bar plot displaying the number of each type of recorded qualifier
+pm2.5_texas %>% filter(!is.na(sample_measurement), !is.na(qualifier)) %>% count(qualifier) %>% 
+  ggplot(aes(x = n, y = qualifier, fill = qualifier)) + 
+    geom_bar(stat = "identity") + 
+    theme(legend.position = "none")
+
+
+# Plot displaying sample trends separated by their qualifiers. (Needs work) for Harris county
 p <- pm2.5_texas %>%  filter(county == "Harris") %>% 
   ggplot(aes(x = ymd(date_local) + hms(time_local), y = sample_measurement)) + 
       geom_line(aes(color = site_number))
 ggplotly(p, dynamicTicks = TRUE)
 
+
+quali <- pm2.5_texas$qualifier
+quali[is.na(quali)] <- "none"
+anova_model <- lm(pm2.5_texas$sample_measurement ~ quali)
+summary(anova_model)
+plot(anova_model)
 ```
+
 
 
 Unhealthy levels for sensitive groups occur at levels higher than 35, but for everyone in general, it is unsafe when levels reach 55.
+Surprisingly, >99% of pm2.5 samples recorded over an unhealthy value have no qualifier, meaning the recordings were correct and there were no external influences that needed to be recorded. The remaining 3 sample measurements were affected by African dust of a prescribed fire, as recorded in the qualifier variable. Moreover, they werent even close to the highest levels recorded, in fact they were marginally unhealthy at a max of about 70 u/m3.
+The 5 highest pm2.5 values do have a reasonable possible explanation. One of them corresponds to November 29, 2018 which happened to be Thanksgiving. The high value makes sense since a lot of people tend to travel to spend it with their family. 3 of them correspond to New Years for 2020 and 2019, which also make sense since people also tend to travel and light fireworks, increasing particulate matter due to the debris in the air. The only one that did not make sense was the last date which happens to be the most recent on occurring on March 12, 2021 in Harris County. After a little research, nothing of interest happened that day to cause such a large measurement. Furthermore, it should be noted the measurement was more of a significant spike from the previous and following hour, leading me to believe it is actually a machine error or outlier, whereas in the other cases the high values were led by a build up or followed by a gradual decline. 
 
-```{r high pm levels}
+```{r unhealthy pm levels}
 
-pm2.5_texas %>% filter(sample_measurement > 55) %>% arrange(desc(sample_measurement)) %>% View()
+# Top 5
+p <- pm2.5_texas %>% filter(sample_measurement > 55) %>% 
+  ggplot(aes(x = date_time_local, y = sample_measurement)) +
+    geom_point(aes(color = qualifier))
+ggplotly(p, dynamicTicks = TRUE)
 
+
+nrow(pm2.5_texas %>% filter(sample_measurement > 55, !is.na(qualifier))) / nrow(pm2.5_texas %>% filter(sample_measurement > 55))
+nrow(pm2.5_texas %>% filter(sample_measurement > 55, is.na(qualifier))) / nrow(pm2.5_texas %>% filter(sample_measurement > 55))
+
+
+pm2.5_texas %>% filter(sample_measurement > 500) %>% select(site_number, date_local)
+pm2.5_texas %>% filter(date_local == '2018-11-29', site_number == "0314") %>% View()
+pm2.5_texas %>% filter(date_local == '2019-01-01', site_number == "1034") %>% View()
+pm2.5_texas %>% filter(date_local == '2020-01-01', site_number == "0024") %>% View()
+pm2.5_texas %>% filter(date_local == '2021-03-12', site_number == "1039") %>% View()
+
+
+# Greater than 100
+pm2.5_texas %>% filter(sample_measurement > 100) %>% select(county, site_number, date_time_local, sample_measurement, qualifier) %>% 
+  ggplot(aes(x = sample_measurement)) + 
+    geom_histogram()
+
+
+p <- pm2.5_texas %>% filter(sample_measurement > 100) %>% count(date_local) %>% 
+  ggplot(aes(x = date_local, y = n)) +
+    geom_bar(stat = "identity")
+ggplotly(p, dynamicTicks = TRUE)
 ```
-
-
-```{r}
-pm2.5_texas %>% filter(qualifier == "X - Filter Temperature Difference or Average out of Spec.") %>% count(sample_frequency)
-```
-
 
 
 
@@ -622,10 +681,9 @@ daily_avg_pm2.5_site <- pm2.5_texas %>% filter(sample_duration == "1 HOUR", samp
 
 daily_avg_pm2.5_county <- daily_avg_pm2.5_site %>% group_by(county, fips, date_local) %>% 
   summarise(pm2.5_avg = max(site_avg, na.rm = TRUE)) %>% ungroup()
-
+daily_avg_pm2.5_county[is.infinite(daily_avg_pm2.5_county$pm2.5_avg), ] <- NA
 
 # write_csv(daily_avg_pm2.5_county, "pm2.5_daily_avg_counties.csv")
-
 ```
 
 
