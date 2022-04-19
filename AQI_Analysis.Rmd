@@ -9,6 +9,7 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 
 library(tidyverse)
+library(readxl)
 library(RAQSAPI)
 library(keyring)
 library(beepr)
@@ -112,6 +113,24 @@ pm2.5_texas <- read_csv("pm2.5_texas.csv")
 pm2.5_texas["fips"] <- as.integer(pm2.5_texas$state_code) * 1000 + as.integer(pm2.5_texas$county_code)
 pm2.5_texas["date_time_local"] <- ymd(pm2.5_texas$date_local) + hms(pm2.5_texas$time_local)
 
+
+# Import COVID data
+covid_cases <- read_excel("texas_covid_cases.xlsx")
+
+
+
+path <- "texas_covid_cases.xlsx"
+covid_cases <- path %>% excel_sheets() %>% set_names() %>% map_dfr(read_excel, path = path, skip = 2, col_names = TRUE)
+covid_cases <- slice(covid_cases, 1:(n() - 6)) %>% tail()
+
+as.Date(as.Date("2020-01-01"):as.Date("2020-12-31"))
+
+
+
+
+
+covid_cases
+covid_fatal <- read_csv("texas_covid_fatalities.csv")
 ```
 
 
@@ -531,6 +550,7 @@ weird_vals %>% select(county, site_number, date_local, sample_measurement) %>% h
 
 weird_vals %>% count(county, site_number)  
 weird_vals %>% count(qualifier)
+
 ```
 
 
@@ -545,13 +565,14 @@ According to the conference, negative values can occur as the measurements fall 
 
 # Code to replace negative values
 
-```
 
+```
 
 
 Now onto investigating missing values and what their qualifiers denote about the data.
 
 As suspected, the reason why values are missing are logged appropriately, which makes my life so much easier since I dont have to investigate potential causes. On the other hand, there are values that are recorded that have some kind of qualifier, such as African dust being present or construction occurring near the instrument. I wonder if these are inflating the PM2.5 values. 
+
 
 ```{r qualifiers}
 
@@ -620,7 +641,8 @@ pm2.5_texas %>% filter(!is.na(sample_measurement), !is.na(qualifier)) %>% count(
 # Plot displaying sample trends separated by their qualifiers. (Needs work) for Harris county
 p <- pm2.5_texas %>%  filter(county == "Harris") %>% 
   ggplot(aes(x = ymd(date_local) + hms(time_local), y = sample_measurement)) + 
-      geom_line(aes(color = site_number))
+      facet_grid(rows = "site_number") +
+      geom_line(aes(color = qualifier))
 ggplotly(p, dynamicTicks = TRUE)
 
 
@@ -628,9 +650,7 @@ quali <- pm2.5_texas$qualifier
 quali[is.na(quali)] <- "none"
 anova_model <- lm(pm2.5_texas$sample_measurement ~ quali)
 summary(anova_model)
-plot(anova_model)
 ```
-
 
 
 Unhealthy levels for sensitive groups occur at levels higher than 35, but for everyone in general, it is unsafe when levels reach 55.
@@ -669,7 +689,34 @@ p <- pm2.5_texas %>% filter(sample_measurement > 100) %>% count(date_local) %>%
 ggplotly(p, dynamicTicks = TRUE)
 ```
 
+While investigating how to handle negative values, I found no guidance or guidelines set by any agency as to how to handle such values, other than they are acceptable to be submitted to the EPA for recording but should not be included in any form of public reporting. 
 
+```{r how many negatives per county}
+
+neg_counts <- pm2.5_texas %>% filter(sample_measurement <= 0) %>% count(county, .drop = TRUE) 
+neg_counts <- rbind(neg_county, c("Ellis", 0)) %>% left_join(pm2.5_texas %>% count(county), by = "county")
+neg_counts <- neg_counts %>% rename(missing = n.x, total = n.y)
+neg_counts$missing <- as.integer(neg_counts$missing)
+neg_counts <- neg_counts %>%  mutate(perc_missing = missing / total)
+
+
+neg_counts %>% 
+  ggplot(aes(x = county, y = missing, fill = county)) + 
+    geom_bar(stat = "identity")
+
+neg_counts %>% 
+  ggplot(aes(x = county, y = perc_missing, fill = county)) + 
+  geom_bar(stat = "identity")
+
+```
+
+
+```{r replace negative}
+
+(pm2.5_texas$sample_measurement <= 0)
+pm2.5_texas %>% filter(sample_measurement <= 0) %>% mutate(sample_measurement = detection_limit / 2) %>% select(sample_measurement) %>% count(sample_measurement)
+
+```
 
 
 ```{r daily average pm2.5}
@@ -717,4 +764,254 @@ sim_norm = rnorm(nrow(data), mean(log(data[[1]])), sd(log(data[[1]])))
 data %>% ggplot(aes(log(county_avg))) + geom_histogram(fill = alpha("red", 0.5)) + geom_histogram(aes(sim_norm), fill = alpha("blue", 0.3))
 
 ```
+
+
+
+```{r test arima}
+
+test_data <- pm2.5_texas %>% filter(county == "Harris", site_number == "0058") %>% group_by(date_local) %>% summarise(pm_avg = mean(sample_measurement, na.rm = TRUE))
+adf.test(na.remove(test_data$pm_avg))
+adf.test(diff(na.remove(test_data$pm_avg)))
+
+Acf(test_data$pm_avg)
+Pacf(test_data$pm_avg)
+
+
+test_model <- auto.arima(test_data$pm_avg)
+summary(test_model)
+adf.test(na.remove(test_model$residuals))
+t.test(test_model$residuals)
+
+Acf(test_model$residuals)
+Pacf(test_model$residuals)
+
+preds <- forecast(test_model, 10)
+preds
+plot(preds)
+
+# ggplot(test_data, aes(x = date_local, y = data.frame(preds$fitted))) + geom_line()
+autoplot(preds) +
+  xlim(1400, 1490)
+
+
+p <- test_data[6:nrow(test_data), ] %>% ggplot(aes(x = date_local, y = pm_avg)) + 
+  geom_line(color = "blue")  + 
+  geom_line(aes(y = preds$fitted), color = "red")
+ggplotly(p, dynamicTicks = TRUE)  %>% layout(hovermode = "x")
+
+```
+
+
+```{r test arima on diff data}
+
+test_data <- pm2.5_texas %>% filter(county == "Harris", site_number == "0058") %>% group_by(date_local) %>% summarise(pm_avg = mean(sample_measurement, na.rm = TRUE))
+
+diff_data <- data.frame(time = test_data$date_local[2:nrow(test_data)], diff_pm = diff(test_data$pm_avg))
+adf.test(na.remove(diff_data$diff_pm))
+
+Acf(diff_data$diff_pm)
+Pacf(diff_data$diff_pm)
+
+model_diff <- auto.arima(diff_data$diff_pm)
+summary(model_diff)
+
+Acf(model_diff$residuals)
+Pacf(model_diff$residuals)
+
+preds_diff <- forecast(model_diff, 10)
+autoplot(preds_diff) +
+  xlim(1400, 1490)
+
+
+p <- diff_data[6:nrow(diff_data), ] %>% 
+        ggplot(aes(time, diff_pm)) +
+          geom_line(color = "blue") +
+          geom_line(aes(y = preds_diff$fitted), color = "red")
+ggplotly(p, dynamicTicks = TRUE) %>% layout(hovermode = "x")
+
+```
+
+
+
+
+
+
+
+#---------------------------------------------------- COVID Analysis ----------------------------------------------------#
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
