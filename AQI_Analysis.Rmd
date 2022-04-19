@@ -904,7 +904,6 @@ covid_cases <- covid_cases %>% group_by(County) %>%
   mutate(new_cases = c(0, diff(Cases))) %>% group_by(County) %>% 
   mutate(avg_7day = round(rollmeanr(new_cases, 7, fill = NA))) %>% ungroup() %>% as_tibble()
 
-covid_cases %>% filter(County == "Harris")
 
 
 # Plotting the total number of cases and fatalities per day in Harris County
@@ -931,11 +930,14 @@ ggplotly(p, dynamicTicks = TRUE) %>% layout(hovermode = "x")
 ```
 
 
-```{r look into counties in pm2.5 dataset}
 
-counties <- unique(pm2.5_texas$county)
 
-covid_cases %>% filter(County %in% counties) %>% select(County) %>% unique()
+```{r plot covid cases with pm2.5}
+
+covid_pm <- covid_cases %>% filter(County %in% unique(pm2.5_texas$county)) 
+daily_avg_pm2.5_county %>% filter(county == "Harris") %>% tail()
+
+daily_avg_pm2.5_county %>% mutate(year = year(date_local)) %>% group_by(county, year) %>% summarize(high_pm = sum(pm2.5_avg > 12), high_pm_perc = high_pm / length(pm2.5_avg))
 
 ```
 
