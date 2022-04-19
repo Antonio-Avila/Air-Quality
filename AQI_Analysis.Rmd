@@ -149,7 +149,11 @@ pm2.5_texas["date_time_local"] <- ymd(pm2.5_texas$date_local) + hms(pm2.5_texas$
 
 # Import COVID data
 covid_cases <- read_csv("covid_cases.csv")
+covid_cases <- covid_cases %>% select(Date, County, Cases)
+covid_cases$County <- as.factor(covid_cases$County)
 covid_fatal <- read_csv("covid_fatal.csv")
+covid_fatal <- covid_fatal %>% select(Date, County, Fatalities)
+covid_fatal$County <- as.factor(covid_fatal$County)
 
 ```
 
@@ -895,30 +899,45 @@ ggplotly(p, dynamicTicks = TRUE) %>% layout(hovermode = "x")
 
 ```{r plot covid data}
 
+# Calculate the number of new cases per day and the rolling 7 day average for new cases
+covid_cases <- covid_cases %>% group_by(County) %>% 
+  mutate(new_cases = c(0, diff(Cases))) %>% group_by(County) %>% 
+  mutate(avg_7day = round(rollmeanr(new_cases, 7, fill = NA))) %>% ungroup() %>% as_tibble()
 
-covid_cases %>% filter(County == "Harris", Date > "2020-03-06") %>%  ggplot(aes(x = Date, y = Cases)) + 
-  geom_line() +
-  geom_line(aes(y = covid_fatal[covid_fatal$County == "Harris",]$Fatalities, color = "red"))
+covid_cases %>% filter(County == "Harris")
+
+
+# Plotting the total number of cases and fatalities per day in Harris County
+covid_cases %>% filter(County %in% c("Dallas", 'Harris'), Date > "2020-03-06") %>%  ggplot(aes(x = Date, y = Cases)) + 
+  geom_line(aes(color = County)) +
+  geom_line(aes(y = covid_fatal[covid_fatal$County == "Harris",]$Fatalities, color = "red")) +
+  
 
 covid_fatal %>% filter(County == "Harris") %>%  ggplot(aes(x = Date, y = Fatalities)) + geom_line()
 
-diff_cases <- data.frame(diff_cases = diff(covid_cases[covid_cases$County == "Harris",]$Cases))
-diff_cases["date"] <- covid_cases %>% filter(County == "Harris", Date > "2020-03-06") %>% select(Date)
-diff_cases$date
 
-p <- diff_cases %>% ggplot(aes(date, diff_cases)) + geom_line()
+
+# Plotting the number of new cases
+p <- covid_cases %>% filter(County == "Harris") %>% 
+  ggplot(aes(x = Date, y = new_cases)) + 
+    geom_line() +
+    geom_line(aes(y = avg_7day), color = "red") 
 ggplotly(p, dynamicTicks = TRUE) %>% layout(hovermode = "x")
 
-covid_cases %>% filter(County == "Harris", Date >= "2021-06-29", Date <= "2021-07-01")
 
 
 
 
-
-# Difference matches daily cases reported by Harris County, 7 day average does as well in this case. Create a function calculating 7day avg
-diff_cases %>% filter(date >= "2021-01-09", date <= "2021-01-15") %>% summarize(avg = mean(diff_cases))
 ```
 
+
+```{r look into counties in pm2.5 dataset}
+
+counties <- unique(pm2.5_texas$county)
+
+covid_cases %>% filter(County %in% counties) %>% select(County) %>% unique()
+
+```
 
 
 
