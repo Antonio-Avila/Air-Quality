@@ -1,7 +1,6 @@
 ---
 title: "AQS"
 author: "Antonio Avila"
-date: "10/18/2021"
 output: html_document
 ---
 
@@ -86,7 +85,7 @@ state_codes <- aqs_states()
 ```
 
 
-```{r import data and combine}
+```{r clean extrated data}
 
 # ozone_texas_20_21 <- read_csv("ozone_texas_20_21.csv")
 # ozone_texas_19_20 <- read_csv("ozone_texas_19_20.csv")
@@ -102,35 +101,56 @@ state_codes <- aqs_states()
 # pm2.5_texas_2017 <- read_csv("pm2.5_texas_2017.csv")
 
 # pm2.5_texas <- bind_rows(pm2.5_texas_2017, pm2.5_texas_2018, pm2.5_texas_2019, pm2.5_texas_2020) %>% distinct(.keep_all = TRUE)
-# write_csv(pm2.5_texas, "pm2.5_texas.csv")
+# write_csv(pm2.5_texas, "pm2.5_texas.csv"
 
+
+
+# Organize Covid data
+
+# covid_cases_2020 <- read_excel("texas_covid_cases.xlsx", skip = 2) %>% select(-`Unknown Date`, -`2020 Total`) %>% slice(1:(n() - 6)) 
+# covid_cases_2020 <- covid_cases_2020 %>% pivot_longer(!County, names_to = "Date", values_to = "Cases")
+# covid_cases_2020$Date <- mdy(covid_cases_2020$Date)
+# 
+# covid_cases_2021 <- read_excel("texas_covid_cases.xlsx", sheet = 2, skip = 2) %>% slice(1:(n() - 2)) 
+# covid_cases_2021 <- covid_cases_2021 %>% pivot_longer(!County, names_to = "Date", values_to = "Cases")
+# covid_cases_2021$Date <- as.Date(as.numeric(covid_cases_2021$Date), origin = "1899-12-30")
+# 
+# covid_cases <- bind_rows(covid_cases_2020, covid_cases_2021)
+# write_csv(covid_cases, "covid_cases.csv")
+# 
+# path_fatal <- "texas_covid_fatalities.xlsx"
+# covid_fatal_2020 <- read_excel(path_fatal, skip = 2, sheet = 1) %>% slice(1:(n() - 2)) 
+# covid_fatal_2020 <- covid_fatal_2020 %>% pivot_longer(!County, names_to = "Date", values_to = "Fatalities")
+# covid_fatal_2020$Date <- mdy(covid_fatal_2020$Date)
+# 
+# covid_fatal_2021 <- read_excel(path_fatal, skip = 2, sheet = 2) %>% slice(1:(n() - 2)) 
+# covid_fatal_2021 <- covid_fatal_2021 %>% pivot_longer(!County, names_to = "Date", values_to = "Fatalities")
+# covid_fatal_2021$Date <- mdy(covid_fatal_2021$Date)
+# 
+# covid_fatal <- bind_rows(covid_fatal_2020, covid_fatal_2021)
+# write_csv(covid_fatal, "covid_fatal.csv")
+
+```
+
+
+```{r import data}
+
+# Import Ozone data
 ozone_texas <- read_csv("ozone_texas.csv")
 ozone_texas["fips"] <- as.integer(ozone_texas$state_code) * 1000 + as.integer(ozone_texas$county_code)
 ozone_texas["date_time_local"] <- ymd(ozone_texas$date_local) + hms(ozone_texas$time_local)
 
 
+# Import PM2.5 data 
 pm2.5_texas <- read_csv("pm2.5_texas.csv")
 pm2.5_texas["fips"] <- as.integer(pm2.5_texas$state_code) * 1000 + as.integer(pm2.5_texas$county_code)
 pm2.5_texas["date_time_local"] <- ymd(pm2.5_texas$date_local) + hms(pm2.5_texas$time_local)
 
 
 # Import COVID data
-covid_cases <- read_excel("texas_covid_cases.xlsx")
+covid_cases <- read_csv("covid_cases.csv")
+covid_fatal <- read_csv("covid_fatal.csv")
 
-
-
-path <- "texas_covid_cases.xlsx"
-covid_cases <- path %>% excel_sheets() %>% set_names() %>% map_dfr(read_excel, path = path, skip = 2, col_names = TRUE)
-covid_cases <- slice(covid_cases, 1:(n() - 6)) %>% tail()
-
-as.Date(as.Date("2020-01-01"):as.Date("2020-12-31"))
-
-
-
-
-
-covid_cases
-covid_fatal <- read_csv("texas_covid_fatalities.csv")
 ```
 
 
@@ -739,7 +759,7 @@ daily_avg_pm2.5_county[is.infinite(daily_avg_pm2.5_county$pm2.5_avg), ] <- NA
 
 # Harris County
 p <- daily_avg_pm2.5_county %>% filter(county == "Harris") %>% 
-        ggplot(aes(x = date_local, y = county_avg)) + 
+        ggplot(aes(x = date_local, y = pm2.5_avg)) + 
           geom_line(aes(color = "PM2.5 Daily Avg")) +
           geom_hline(yintercept = 12, color = "red") +
           geom_smooth(method = "gam", aes(color = "Trend"), se = FALSE) +
@@ -751,7 +771,9 @@ p <- daily_avg_pm2.5_county %>% filter(county == "Harris") %>%
 
 ggplotly(p, dynamicTicks = TRUE) %>% rangeslider() %>% layout(hovermode = "x")
 
-data <- daily_avg_pm2.5_county %>% filter(county == "Harris") %>% select(county_avg) %>% drop_na() 
+
+
+ldata <- daily_avg_pm2.5_county %>% filter(county == "Harris") %>% select(county_avg) %>% drop_na() 
 shapiro.test(log(data[[1]]))
 ks.test(log(data[[1]]), "pnorm")
 jarque.bera.test(log(data[[1]]))
@@ -765,6 +787,38 @@ data %>% ggplot(aes(log(county_avg))) + geom_histogram(fill = alpha("red", 0.5))
 
 ```
 
+
+
+```{r}
+
+p <- daily_avg_pm2.5_county %>% filter(county == "Harris") %>% mutate(year = year(date_local), dm = mday(date_local)) %>% 
+        ggplot(aes(x = date_local, y = pm2.5_avg)) + 
+          geom_line(aes(color = year)) +
+          geom_hline(yintercept = 12, color = "red") +
+          geom_smooth(method = "gam", aes(color = "Trend"), se = FALSE) +
+          ggtitle("Harris County PM2.5 Levels from 2017-2021") +
+          xlab("Date") +
+          ylab("PM2.5 Concentration (ug/m3)") +
+          annotate("text", x = as.Date("2018-08-08"), y = 13, label = "High") +
+          scale_color_manual(name = "Legend", values = c("#69b3a2", "purple"))
+
+ggplotly(p, dynamicTicks = TRUE) %>% rangeslider() %>% layout(hovermode = "x")
+
+
+
+
+
+test_dat <- daily_avg_pm2.5_county %>% filter(county == "Harris", date_local != "2020-02-29") %>% mutate(year_cov = as.factor(year(date_local))) %>% filter(year_cov %in% c(2018, 2019, 2020)) 
+test_dat["index"] <- rep(1:365, 3)
+
+
+p <- test_dat %>% ggplot(aes(x = index, y = pm2.5_avg)) + geom_smooth(aes(color = year_cov), se = FALSE, span = 0.5) + geom_line(aes(color = year_cov))
+ggplotly(p, dynamicTicks = TRUE)  %>% layout(hovermode = "x")
+
+
+p <- test_dat %>% ggplot(aes(x = index, y = pm2.5_avg, color = year_cov)) + geom_smooth(se = FALSE) 
+ggplotly(p, dynamicTicks = TRUE)  %>% layout(hovermode = "x")
+```
 
 
 ```{r test arima}
@@ -838,6 +892,43 @@ ggplotly(p, dynamicTicks = TRUE) %>% layout(hovermode = "x")
 
 
 #---------------------------------------------------- COVID Analysis ----------------------------------------------------#
+
+```{r plot covid data}
+
+
+covid_cases %>% filter(County == "Harris", Date > "2020-03-06") %>%  ggplot(aes(x = Date, y = Cases)) + 
+  geom_line() +
+  geom_line(aes(y = covid_fatal[covid_fatal$County == "Harris",]$Fatalities, color = "red"))
+
+covid_fatal %>% filter(County == "Harris") %>%  ggplot(aes(x = Date, y = Fatalities)) + geom_line()
+
+diff_cases <- data.frame(diff_cases = diff(covid_cases[covid_cases$County == "Harris",]$Cases))
+diff_cases["date"] <- covid_cases %>% filter(County == "Harris", Date > "2020-03-06") %>% select(Date)
+diff_cases$date
+
+p <- diff_cases %>% ggplot(aes(date, diff_cases)) + geom_line()
+ggplotly(p, dynamicTicks = TRUE) %>% layout(hovermode = "x")
+
+covid_cases %>% filter(County == "Harris", Date >= "2021-06-29", Date <= "2021-07-01")
+
+
+
+
+
+# Difference matches daily cases reported by Harris County, 7 day average does as well in this case. Create a function calculating 7day avg
+diff_cases %>% filter(date >= "2021-01-09", date <= "2021-01-15") %>% summarize(avg = mean(diff_cases))
+```
+
+
+
+
+
+
+
+
+
+
+
 
 
 
