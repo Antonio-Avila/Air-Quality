@@ -212,8 +212,8 @@ daily_max_counties[is.infinite(daily_max_counties$ozone_avg),]$ozone_avg <- NA
 # Normal gpplot, but working towards turning it into an interactive plot_ly plot 
 
 # p <- daily_max_counties %>% filter(county == "Harris") %>% 
-#   ggplot(aes(date_local, county_max)) + 
-#     geom_line(aes(color = county_max)) + 
+#   ggplot(aes(date_local, ozone_avg)) + 
+#     geom_line(aes(color = ozone_avg)) + 
 #     scale_color_gradient(low = "green", high = "red") +
 #     geom_hline(yintercept = 70, color = "red") +
 #     geom_smooth(method = "gam", se = FALSE) + 
@@ -225,7 +225,7 @@ daily_max_counties[is.infinite(daily_max_counties$ozone_avg),]$ozone_avg <- NA
 
 
 p <- daily_max_counties %>% filter(county == "Harris") %>% 
-  ggplot(aes(date_local, county_max)) + 
+  ggplot(aes(date_local, ozone_avg)) + 
     geom_line(aes(color = "8-Hr Max Avg Ozone")) + 
     geom_hline(yintercept = 70, color = "red") +
     geom_smooth(method = "gam", se = FALSE, aes(color = "Local Model")) + 
@@ -237,18 +237,7 @@ p <- daily_max_counties %>% filter(county == "Harris") %>%
     scale_color_manual(name = "Legend", values = c("#69b3a2", "#00A9FF", "purple"))
 ggplotly(p, dynamicTicks = TRUE) %>%  layout(hovermode = "x") %>% rangeslider()
 
-ozone_lm <- lm(county_max ~., data = harris_county)
-summary(ozone_lm)
 
-
-# Some statistics
-adf.test(harris_county$county_max, k = 365)
-Box.test(harris_county$county_max, type = "Ljung", lag = 365)
-
-par(mfcol = c(2,1))
-Acf(harris_county$county_max, lag.max = 720)
-Pacf(harris_county$county_max, lag.max = 720)
-par(mfcol = c(1,1))
 ```
 
 
@@ -272,9 +261,8 @@ county_df <- left_join(county_df, test_day, by = "county")
 
 p <-  plot_usmap(include = "TX") +
         geom_polygon(data = county_df, color = "black",
-                    aes(x = x, y = y, group = group, fill = county_max,
-                        text = paste("County:", county, "<br>Ozone:", county_max))) +
-        # scale_fill_gradient2(low = "green", high = "red", mid = "orange", midpoint = 65, limit = c(0, 120)) +
+                    aes(x = x, y = y, group = group, fill = ozone_avg, 
+                        text = paste("County:", county, "<br>Ozone:", ozone_avg))) +
         scale_fill_gradientn(colors = rev(palette),  limit = c(0, 120)) +
         labs(fill = "Ozone Level")
 
@@ -289,7 +277,7 @@ Sys.time() - start_time
 # url <- 'https://raw.githubusercontent.com/plotly/datasets/master/geojson-counties-fips.json'
 # counties <- rjson::fromJSON(file=url)
 
-# test_day = daily_max_counties %>% filter(date_local == "2020-01-01") %>% select(county, fips, county_max)
+# test_day = daily_max_counties %>% filter(date_local == "2020-01-01") %>% select(county, fips, ozone_avg)
 # g <- list(
 #   scope = 'usa',
 #   projection = list(type = 'albers usa'),
@@ -305,7 +293,7 @@ Sys.time() - start_time
 #     type = "choropleth",
 #     geojson = counties,
 #     locations = test_day$fips,
-#     z = test_day$county_max,
+#     z = test_day$ozone_avg,
 #     zmin = 0,  
 #     marker = list(line = list(width = 0))
 #   )
@@ -326,8 +314,8 @@ Sys.time() - start_time
 start_time <- Sys.time()
 
 
-test_day = daily_max_counties %>% filter(date_local == "2021-03-17") %>% select(county, fips, county_max)
-#
+test_day = daily_max_counties %>% filter(date_local == "2021-03-17") %>% select(county, fips, ozone_avg)
+
 county_df <- map_data("county") %>% filter(region == "texas")
 county_df <- county_df %>% rename(state = region, county = subregion)
 state_df <- map_data("state") %>% filter(region == "texas")
@@ -339,7 +327,7 @@ county_data <- test_day %>% mutate(county = tolower(county)) %>%
 p <- ggplot(data = state_df, aes(long, lat, group = group)) +
         coord_fixed(1.15) +
         geom_polygon(fill = "gray")  +
-        geom_polygon(data = county_data, color = "black", aes(fill = county_max, text = paste("County:", tools::toTitleCase(county), "<br>Ozone:", county_max))) +
+        geom_polygon(data = county_data, color = "black", aes(fill = ozone_avg, text = paste("County:", tools::toTitleCase(county), "<br>Ozone:", ozone_avg))) +
         scale_fill_gradient(low = "green", high = "red", labels = "70 (High)", breaks = 70) +
         geom_polygon(color = "black", fill = NA) + 
         theme_void()
@@ -398,11 +386,11 @@ ggplotly(p, dynamicTicks = TRUE) %>% rangeslider() %>% layout(hovermode = "x")
 
 p <- daily_harris %>% ggplot(aes(x = date_local)) +
        geom_line(aes(y = daily_avg), color = "red") +
-       geom_line(aes(y = harris_county$county_max), color = "purple")
+       geom_line(aes(y = harris_county$ozone_avg), color = "purple")
 ggplotly(p, dynamicTicks = TRUE) %>% rangeslider() %>% layout(hovermode = "x")
 
-cor(harris_county$county_max, daily_harris$daily_avg)
-is.na(ozone_texas$s;ample_measurement) %>% sum() / nrow(ozone_texas)
+cor(harris_county$ozone_avg, daily_harris$daily_avg)
+is.na(ozone_texas$sample_measurement) %>% sum() / nrow(ozone_texas)
 ```
 
 
@@ -418,7 +406,7 @@ is.na(ozone_texas$s;ample_measurement) %>% sum() / nrow(ozone_texas)
 ```{r ozone violations}
 
 daily_max_counties %>% mutate(year = year(date_local)) %>% group_by(county, year) %>% 
-  summarize(num_unhealthy = sum(county_max >= 70)) %>% 
+  summarize(num_unhealthy = sum(ozone_avg >= 70)) %>% 
   ungroup() %>% group_by(county) %>% mutate(total_violations = sum(num_unhealthy))
   
 
@@ -438,12 +426,12 @@ Next, I will attempt to fit a model the data using a more appropriate method. Th
 ```{r testing arima model}
 # Tried to fit an arima model using the auto.arima function, knowing it wasn't going to perform well. But damn, wasn't expecting it to be this bad.
 
-harris_county <- daily_max_counties %>% ungroup() %>% filter(county == "Harris") %>% select(date_local, county_max)
-fit = auto.arima(harris_county$county_max)
+harris_county <- daily_max_counties %>% ungroup() %>% filter(county == "Harris") %>% select(date_local, ozone_avg)
+fit = auto.arima(harris_county$ozone_avg)
 fit
 pred = forecast(fit, 100)
 p <- ggplot(harris_county, aes(x = date_local)) +
-  geom_line(aes(y = county_max, color = "blue")) + 
+  geom_line(aes(y = ozone_avg, color = "blue")) + 
   geom_line(aes(y = pred$fitted, color = "red")) +
   scale_color_manual(name="Values",labels=c("Measured Values", "Predictions"), values=c("dodgerblue4", "firebrick4"))
 ggplotly(p, dynamicTicks = TRUE) %>% layout(hovermode = "x")
@@ -459,7 +447,7 @@ ggplotly(p, dynamicTicks = TRUE) %>% layout(hovermode = "x")
 
 ```{r arima model with differencing}
 
-ozone_diff <- data.frame(date_local = harris_county$date_local[-1], diff = diff(harris_county$county_max))
+ozone_diff <- data.frame(date_local = harris_county$date_local[-1], diff = diff(harris_county$ozone_avg))
 ggplot(ozone_diff, aes(diff)) + geom_histogram()
 ggplot(ozone_diff) + geom_line(aes(date_local, diff))
 
@@ -488,7 +476,7 @@ fit = auto.arima(ozone_diff$diff)
 fit
 pred = forecast(fit, 100)
 p <- ggplot(harris_county, aes(x = date_local)) +
-  geom_line(aes(y = county_max, color = "blue")) + 
+  geom_line(aes(y = ozone_avg, color = "blue")) + 
   geom_line(aes(y = c(78, pred$fitted + 78), color = "red")) +
   scale_color_manual(name="Values",labels=c("Measured Values", "Predictions"), values=c("dodgerblue4", "firebrick4"))
 ggplotly(p, dynamicTicks = TRUE) %>% layout(hovermode = "x")
@@ -509,7 +497,7 @@ Time series analysis relies around around the concept of the ideal scenario invo
 
 ```{r adjusting for seasonality}
 
-ozone_season <- data.frame(diff = diff(harris_county$county_max, lag = 365))
+ozone_season <- data.frame(diff = diff(harris_county$ozone_avg, lag = 365))
 ggplot(ozone_season, aes(diff)) + geom_histogram()
 
 p <- ozone_season %>% ggplot(aes(1:length(diff), diff)) +
