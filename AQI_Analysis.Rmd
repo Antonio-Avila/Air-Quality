@@ -155,6 +155,9 @@ covid_fatal <- read_csv("covid_fatal.csv")
 covid_fatal <- covid_fatal %>% select(Date, County, Fatalities)
 covid_fatal$County <- as.factor(covid_fatal$County)
 
+# Import Texas Population data
+texas_pop <- read_csv("texas_population_by_county.csv")
+
 ```
 
 
@@ -884,23 +887,42 @@ ggplotly(p, dynamicTicks = TRUE) %>% layout(hovermode = "x")
 
 #---------------------------------------------------- COVID Analysis ----------------------------------------------------#
 
-```{r plot covid data}
+```{r clean TX pop data}
+
+#Need to clean county names
+texas_pop$County %>% str_extract_all("County")
+
+```
+
+
+```{r number of new covid cases}
 
 # Calculate the number of new cases per day and the rolling 7 day average for new cases
 covid_cases <- covid_cases %>% group_by(County) %>% 
   mutate(new_cases = c(0, diff(Cases))) %>% group_by(County) %>% 
-  mutate(avg_7day = round(rollmeanr(new_cases, 7, fill = NA))) %>% ungroup() %>% as_tibble()
+  mutate(cases_7day_avg = round(rollmeanr(new_cases, 7, fill = NA))) %>% ungroup() %>% as_tibble()
 
 
+covid_fatal <- covid_fatal %>% group_by(County) %>% 
+  mutate(new_fatal = c(0, diff(Fatalities))) %>% group_by(County) %>% 
+  mutate(fatal_7day_avg = round(rollmeanr(new_fatal, 7, fill = NA))) %>% ungroup() %>% as_tibble()
 
-# Plotting the total number of cases and fatalities per day in Harris County
-covid_cases %>% filter(County %in% c("Dallas", 'Harris'), Date > "2020-03-06") %>%  ggplot(aes(x = Date, y = Cases)) + 
-  geom_line(aes(color = County)) +
-  geom_line(aes(y = covid_fatal[covid_fatal$County == "Harris",]$Fatalities, color = "red")) +
-  
+```
+
+
+```{r plot covid data}
+
+# Plotting the total number of cases and fatalities per day in Harris and Dallas County (containing the 2 largest cities in Texas, Houston and Dallas)
+covid_cases %>% filter(County %in% c("Dallas", 'Harris')) %>%  ggplot(aes(x = Date, y = Cases)) + 
+  geom_line(aes(color = County)) 
+
+# Plotting the new cases in the above counties
+p <- covid_cases %>% filter(County %in% c("Dallas", 'Harris')) %>%  ggplot(aes(x = Date, y = new_cases)) + 
+  geom_line(aes(color = County)) 
+ggplotly(p, dynamicTicks = TRUE) %>% layout(hovermode = "x")
+
 
 covid_fatal %>% filter(County == "Harris") %>%  ggplot(aes(x = Date, y = Fatalities)) + geom_line()
-
 
 
 # Plotting the number of new cases
@@ -909,9 +931,6 @@ p <- covid_cases %>% filter(County == "Harris") %>%
     geom_line() +
     geom_line(aes(y = avg_7day), color = "red") 
 ggplotly(p, dynamicTicks = TRUE) %>% layout(hovermode = "x")
-
-
-
 
 
 ```
