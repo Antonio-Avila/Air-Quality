@@ -347,6 +347,7 @@ Out of curiosity, I decided to explore whether using the daily average ozone lev
 That does leave us with the question of whether we should consider modeling the hourly ozone levels. The glaring downsides of this approach are that there are missing values from sites on certain days and the computational cost of modeling 24 times the data (more of a limitation on my computer's part)
 
 ```{r county average hourly}
+harris_county <- daily_max_counties %>% filter(county == "Harris")
 
 hourly_avg <- ozone_texas %>% group_by(county, date_local, time_local) %>% 
               summarise( # date_time = as.POSIXct(paste(date_local, time_local), format = "%Y-%m-%d %H:%M"), 
@@ -395,6 +396,7 @@ is.na(ozone_texas$sample_measurement) %>% sum() / nrow(ozone_texas)
 
 
 
+#-------------------  Ozone Violations (Needs Work) -------------------------
 
 
  Counting the number of days the max 8hr avg was in unhealhy territory
@@ -413,9 +415,6 @@ daily_max_counties %>% mutate(year = year(date_local)) %>% group_by(county, year
 ```
 
 
-```{r}
-stop()
-```
 
 #-------------------------  Modeling  -------------------------#
 
@@ -706,7 +705,7 @@ While investigating how to handle negative values, I found no guidance or guidel
 ```{r how many negatives per county}
 
 neg_counts <- pm2.5_texas %>% filter(sample_measurement <= 0) %>% count(county, .drop = TRUE) 
-neg_counts <- rbind(neg_county, c("Ellis", 0)) %>% left_join(pm2.5_texas %>% count(county), by = "county")
+neg_counts <- rbind(neg_counts, c("Ellis", 0)) %>% left_join(pm2.5_texas %>% count(county), by = "county")
 neg_counts <- neg_counts %>% rename(missing = n.x, total = n.y)
 neg_counts$missing <- as.integer(neg_counts$missing)
 neg_counts <- neg_counts %>%  mutate(perc_missing = missing / total)
