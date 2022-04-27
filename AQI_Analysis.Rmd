@@ -22,6 +22,7 @@ library(tseries)
 library(quantmod)
 library(maps)
 library(RColorBrewer)
+library(gridExtra)
 ```
 
 ## R Markdown
@@ -157,6 +158,7 @@ covid_fatal$County <- as.factor(covid_fatal$County)
 
 # Import Texas Population data
 texas_pop <- read_csv("texas_population_by_county.csv")
+texas_pop$County <- texas_pop$County %>% str_replace(".", "") %>% str_replace(" County, Texas", "")
 
 ```
 
@@ -887,12 +889,6 @@ ggplotly(p, dynamicTicks = TRUE) %>% layout(hovermode = "x")
 
 #---------------------------------------------------- COVID Analysis ----------------------------------------------------#
 
-```{r clean TX pop data}
-
-#Need to clean county names
-texas_pop$County %>% str_extract_all("County")
-
-```
 
 
 ```{r number of new covid cases}
@@ -900,14 +896,21 @@ texas_pop$County %>% str_extract_all("County")
 # Calculate the number of new cases per day and the rolling 7 day average for new cases
 covid_cases <- covid_cases %>% group_by(County) %>% 
   mutate(new_cases = c(0, diff(Cases))) %>% group_by(County) %>% 
-  mutate(cases_7day_avg = round(rollmeanr(new_cases, 7, fill = NA))) %>% ungroup() %>% as_tibble()
+  mutate(cases_7day_avg = round(rollmeanr(new_cases, 7, fill = NA))) %>% 
+  ungroup() %>% as_tibble() %>% 
+  left_join(texas_pop) %>% 
+  mutate(scaled_new_cases = new_cases / Population * 100000, scaled_cases = Cases / Population * 100000) 
 
 
 covid_fatal <- covid_fatal %>% group_by(County) %>% 
   mutate(new_fatal = c(0, diff(Fatalities))) %>% group_by(County) %>% 
-  mutate(fatal_7day_avg = round(rollmeanr(new_fatal, 7, fill = NA))) %>% ungroup() %>% as_tibble()
+  mutate(fatal_7day_avg = round(rollmeanr(new_fatal, 7, fill = NA))) %>% 
+  ungroup() %>% as_tibble() %>% 
+  left_join(texas_pop) %>% 
+  mutate(scaled_new_fatal = new_fatal / Population * 100000, scaled_fatal = Fatalities / Population * 100000) 
 
 ```
+
 
 
 ```{r plot covid data}
@@ -917,8 +920,9 @@ covid_cases %>% filter(County %in% c("Dallas", 'Harris')) %>%  ggplot(aes(x = Da
   geom_line(aes(color = County)) 
 
 # Plotting the new cases in the above counties
-p <- covid_cases %>% filter(County %in% c("Dallas", 'Harris')) %>%  ggplot(aes(x = Date, y = new_cases)) + 
-  geom_line(aes(color = County)) 
+p <- covid_cases %>% filter(County %in% c("Travis", 'Harris')) %>%  ggplot(aes(x = Date, y = new_cases)) + 
+  geom_line(aes(color = County)) +
+  ggtitle("Raw New Cases")
 ggplotly(p, dynamicTicks = TRUE) %>% layout(hovermode = "x")
 
 
@@ -936,22 +940,52 @@ ggplotly(p, dynamicTicks = TRUE) %>% layout(hovermode = "x")
 ```
 
 
+```{r plot cases and fatalities per 100000}
+
+p <- covid_cases %>%  filter(County %in% c("Dallas", 'Harris', 'Travis')) %>%  ggplot(aes(x = Date, y = scaled_new_cases)) + 
+  geom_line(aes(color = County)) +
+  ggtitle("Scaled New Cases")
+ggplotly(p, dynamicTicks = TRUE) %>% layout(hovermode = "x")
 
 
-```{r plot covid cases with pm2.5}
-
-covid_pm <- covid_cases %>% filter(County %in% unique(pm2.5_texas$county)) 
-daily_avg_pm2.5_county %>% filter(county == "Harris") %>% tail()
-
-daily_avg_pm2.5_county %>% mutate(year = year(date_local)) %>% group_by(county, year) %>% summarize(high_pm = sum(pm2.5_avg > 12), high_pm_perc = high_pm / length(pm2.5_avg))
-
+p <- covid_fatal %>%  filter(County %in% c("Dallas", 'Harris', 'Travis')) %>%  ggplot(aes(x = Date, y = scaled_new_fatal)) + 
+  geom_line(aes(color = County)) +
+  ggtitle("Scaled New Fatalities")
+ggplotly(p, dynamicTicks = TRUE) %>% layout(hovermode = "x")
 ```
 
 
 
+```{r plot covid cases with pm2.5}
+
+p_cov <- covid_fatal %>% filter(County == "Harris", Date >= "2020-03-06") %>% 
+  filter(County == "Harris", Date <= "2021-09-01") %>% 
+  ggplot(aes(x = Date)) + 
+    geom_line(aes(y = scaled_new_fatal), color = "red") +
+    ggtitle("Daily Covid Cases per 100,000")
+
+p_pm <- filter(daily_avg_pm2.5_county, county == "Harris", date_local >= "2020-03-06") %>% 
+  ggplot(aes(x = date_local)) +
+        geom_line(aes(y = pm2.5_avg), color = "blue")     
+  
+grid.arrange(p_cov, p_pm)
 
 
 
+# Find correlation betwen covid fatalities and pm2.5 vals
+
+covid_fatal %>% 
+  inner_join(daily_avg_pm2.5_county, by = c( "Date" = "date_local", "County" = "county" )) %>% 
+  filter(County == "Harris") %>%
+  summarize(correlation = cor(scaled_new_fatal, pm2.5_avg))
+
+
+covid_fatal %>% 
+  inner_join(daily_avg_pm2.5_county, by = c( "Date" = "date_local", "County" = "county" )) %>% 
+  filter(County == "Harris") %>%
+  ggplot(aes(pm2.5_avg, scaled_new_fatal)) + 
+    geom_point()
+```
 
 
 
