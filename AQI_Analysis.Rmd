@@ -960,31 +960,34 @@ ggplotly(p, dynamicTicks = TRUE) %>% layout(hovermode = "x")
 
 ```{r plot covid cases with pm2.5}
 
-test_county = "Travis"
+test_county = "Harris"
 p_cases <- covid_cases %>% filter(County == test_county, Date >= "2020-03-06", Date <= "2021-09-01") %>% 
   ggplot(aes(x = Date)) + 
-    geom_line(aes(y = scaled_new_cases), color = "red") +
-    ggtitle("Daily Covid Cases per 100,000") +
+    geom_line(aes(y = scaled_new_cases), color = "#424874") +
+    ggtitle(paste("Daily Covid Cases per 100,000 in", test_county, "County")) +
     xlab("Date") + ylab("Cases")
 
 p_fatal <- covid_fatal %>% filter(County == test_county, Date >= "2020-03-06", Date <= "2021-09-01") %>% 
   ggplot(aes(x = Date)) + 
     geom_line(aes(y = scaled_new_fatal), color = "red") +
-    ggtitle("Daily Covid Fatalities per 100,000") +
+    ggtitle(paste("Daily Covid Fatalities per 100,000 in", test_county, "County")) +
     xlab("Date") + ylab("Fatalities")
 
 p_pm <- filter(daily_avg_pm2.5_county, county == test_county, date_local >= "2020-03-06") %>% 
   ggplot(aes(x = date_local)) +
-      geom_line(aes(y = pm2.5_avg), color = "blue") +
+      geom_line(aes(y = pm2.5_avg), color = "#5E747F") +
       geom_hline(yintercept = 12, color = "red") +
-      annotate("text", x = as.Date("2020-08-08"), y = 13, label = "High") +
-      ggtitle("Average PM2.5 Value") +
+      # annotate("text", x = as.Date("2020-08-08"), y = 13, label = "High") +
+      ggtitle(paste("Average PM2.5 Value in", test_county, "County")) +
       xlab("Date") + ylab("PM2.5 Daily Avg")  
-  
+
 grid.arrange(p_cases, p_fatal, p_pm)
 # rm(p_cases, p_fatal, p_pm)
 
+```
 
+
+```{r test pm vs covid}
 
 # Plot covid fatalities with pm2.5 
 test_county <- "Dallas"
@@ -1000,8 +1003,6 @@ ggplotly(p, dynamicTicks = TRUE) %>% layout(hovermode = "x")
 
 
 
-
-
 # plot number of daily covid cases with pm2.5
 p <- covid_cases %>% filter(County == "Harris", Date >= "2020-03-06") %>% 
   filter(County == "Harris", Date <= "2021-09-01") %>% 
@@ -1012,7 +1013,6 @@ p <- covid_cases %>% filter(County == "Harris", Date >= "2020-03-06") %>%
     ggtitle("Daily Covid Cases per 100,000") +
     xlab("Date") + ylab("Cases")
 ggplotly(p)
-
 ```
 
 
@@ -1020,22 +1020,63 @@ ggplotly(p)
 Thinking of a way to determine to compare how pollution affects covid fatalities (if it even does) across different counties. Perhaps compare month to month? Find the number of times a county's pollution levels exceed the EPA's threshold and see how the number of covid fatalities in that month change correspondingly. 
 
 
-```{r pm2.5 monthly analysis }
+```{r define monthly data}
 
-p <- daily_avg_pm2.5_county %>% mutate(year = year(date_local), month = month(date_local)) %>% 
+days_high_pm <- daily_avg_pm2.5_county %>% mutate(year = year(date_local), month = month(date_local)) %>% 
   group_by(county, year, month) %>% 
-  summarize(n_high_pm = sum(pm2.5_avg > 15)) %>% 
+  summarize(n_high_pm = sum(pm2.5_avg > 15, na.rm = TRUE)) %>% 
   ungroup() %>% 
-  mutate(date = ymd(paste(year, month, "01"))) %>% 
-  filter(county == "Harris") %>%
-  ggplot(aes(date, n_high_pm)) + geom_line()
-ggplotly(p)
+  mutate(date = ymd(paste(year, month, "01"))) 
 
+monthly_covid_fatal <- covid_fatal %>% mutate(year = year(Date), month = month(Date)) %>%
+    group_by(County, year, month) %>% 
+    summarise(monthly_fatal = sum(scaled_new_fatal), total_fatal = sum(new_fatal)) %>%
+    ungroup() %>% 
+    mutate(date = ymd(paste(year, month, "01")))
 
 ```
 
 
+```{r}
+p <- covid_cases %>% filter(County == "Harris") %>% ggplot(aes(Date, cases_7day_avg)) + geom_line()
+ggplotly(p) %>% layout(hovermode = "x")
+```
 
+
+```{r pm2.5 monthly analysis }
+
+test_county = "Dallas"
+p_days <- days_high_pm %>% 
+  filter(county == test_county, date >= "2020-03-01", date <= "2021-09-01") %>%
+  ggplot(aes(date, n_high_pm)) + geom_line(color = "#5E747F") +
+  xlab("Date") + ylab("Number of High Days") +
+  ggtitle(paste("Number of Days per month with High PM2.5 in", test_county, "County"))
+# ggplotly(p) %>% layout(hovermode = "x")
+
+p_fatal <- covid_fatal %>% filter(County == test_county, Date >= "2020-03-06", Date <= "2021-09-01") %>% 
+  ggplot(aes(x = Date)) + 
+    geom_line(aes(y = scaled_new_fatal), color = "red") +
+    ggtitle(paste("Daily Covid Fatalities per 100,000 in", test_county, "County")) +
+    xlab("Date") + ylab("Fatalities")
+
+p_fatal_month <- monthly_covid_fatal %>% filter(County == test_county, date >= "2020-03-01", date <= "2021-09-01") %>% 
+  ggplot(aes(date, monthly_fatal)) + 
+  geom_line(color = "#424874") +
+  ggtitle(paste("Monthly Covid Fatalities per 100,000 in", test_county, "County")) +
+  xlab("Date") + ylab("Monthly Fatalities")
+
+p_cases <- covid_cases %>% filter(County == test_county, Date >= "2020-03-06", Date <= "2021-09-01") %>% 
+  ggplot(aes(x = Date)) + 
+    geom_line(aes(y = scaled_new_cases), color = "#424874") +
+    ggtitle(paste("Daily Covid Cases per 100,000 in", test_county, "County")) +
+    xlab("Date") + ylab("Cases")
+
+grid.arrange(p_days, p_fatal_month)
+
+```
+
+
+To determine if pm2.5 levels has an impact on the number of covid related deaths, I found the number of days a county had high levels of pm2.5 (greater than 12) per month and compared it to the number of deaths. There seems to be a partial relationship between the two variables since covid deaths tend to spike after 
 
 
 
