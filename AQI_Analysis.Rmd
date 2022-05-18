@@ -54,33 +54,33 @@ state_codes <- aqs_states()
 # Working for the parameter code 45201 (benzine) but not for any other codes from the list above
 
 # start_time = proc.time()
-# ozone_texas <- aqs_sampledata_by_state(parameter = "44201",
-#                                            bdate = as.Date("20200901",
+# ozone_texas_21_22 <- aqs_sampledata_by_state(parameter = "44201",
+#                                            bdate = as.Date("20210901",
 #                                                            format="%Y%m%d"
 #                                                            ),
-#                                            edate = as.Date("20210901",
+#                                            edate = as.Date("20220501",
 #                                                           format = "%Y%m%d"),
 #                                            stateFIPS = "48"
 #                                           )
 # print("Time to Execute:")
 # print(proc.time() - start_time)
 # beep()
-
+# write_csv(ozone_texas_21_22, "ozone_texas_21_22.csv")
 ```
 
 
 ```{r extract pm2.5 data}
 # Sys.sleep(120)
 # start_time = Sys.time()
-# pm2.5_texas <- aqs_sampledata_by_state(parameter = "88101",
-#                                            bdate = as.Date("20170901",
+# pm2.5_texas_22 <- aqs_sampledata_by_state(parameter = "88101",
+#                                            bdate = as.Date("20210901",
 #                                                            format="%Y%m%d"
 #                                                            ),
-#                                            edate = as.Date("20180901",
+#                                            edate = as.Date("20220501",
 #                                                           format = "%Y%m%d"),
 #                                            stateFIPS = "48"
 #                                           )
-# write_csv(pm2.5_texas, "pm2.5_texas_2017.csv")
+# write_csv(pm2.5_texas_22, "pm2.5_texas_2022.csv")
 # Sys.time() - start_time
 # beep()
 ```
@@ -88,21 +88,26 @@ state_codes <- aqs_states()
 
 ```{r clean extrated data}
 
+# ozone_texas_21_22 <- read_csv("ozone_texas_21_22.csv")
 # ozone_texas_20_21 <- read_csv("ozone_texas_20_21.csv")
 # ozone_texas_19_20 <- read_csv("ozone_texas_19_20.csv")
 # ozone_texas_18_19 <- read_csv("ozone_texas_18_19.csv")
 # ozone_texas_17_18 <- read_csv("ozone_texas_17_18.csv")
 # 
 # ozone_texas <- union(union(union(ozone_texas_17_18, ozone_texas_18_19), ozone_texas_19_20), ozone_texas_20_21)
+# ozone_texas <- bind_rows(ozone_texas, ozone_texas_21_22)
+# ozone_texas <- 
 # write_csv(ozone_texas, "ozone_texas.csv")
 # 
+
 # pm2.5_texas_2020 <- read_csv("pm2.5_texas_2020.csv")
 # pm2.5_texas_2019 <- read_csv("pm2.5_texas_2019.csv")
 # pm2.5_texas_2018 <- read_csv("pm2.5_texas_2018.csv")
 # pm2.5_texas_2017 <- read_csv("pm2.5_texas_2017.csv")
 
-# pm2.5_texas <- bind_rows(pm2.5_texas_2017, pm2.5_texas_2018, pm2.5_texas_2019, pm2.5_texas_2020) %>% distinct(.keep_all = TRUE)
-# write_csv(pm2.5_texas, "pm2.5_texas.csv"
+# pm2.5_texas <- bind_rows(pm2.5_texas_2017, pm2.5_texas_2018, pm2.5_texas_2019, pm2.5_texas_2020, pm2.5_texas_2022) %>% distinct(.keep_all = TRUE)
+# pm2.5_texas <- bind_rows(pm2.5_texas, pm2.5_texas_2022)
+# write_csv(pm2.5_texas, "pm2.5_texas.csv")
 
 
 
@@ -140,12 +145,14 @@ state_codes <- aqs_states()
 ozone_texas <- read_csv("ozone_texas.csv")
 ozone_texas["fips"] <- as.integer(ozone_texas$state_code) * 1000 + as.integer(ozone_texas$county_code)
 ozone_texas["date_time_local"] <- ymd(ozone_texas$date_local) + hms(ozone_texas$time_local)
+ozone_texas <- ozone_texas %>% distinct(.keep_all = TRUE)
 
 
 # Import PM2.5 data 
 pm2.5_texas <- read_csv("pm2.5_texas.csv")
 pm2.5_texas["fips"] <- as.integer(pm2.5_texas$state_code) * 1000 + as.integer(pm2.5_texas$county_code)
 pm2.5_texas["date_time_local"] <- ymd(pm2.5_texas$date_local) + hms(pm2.5_texas$time_local)
+pm2.5_texas <- pm2.5_texas %>% distinct(.keep_all = TRUE)
 
 
 # Import COVID data
@@ -198,16 +205,17 @@ max_8hr_avg <- function(data){
 
 
 ```{r find daily max avg per county}
-daily_max_sites <- ozone_texas %>% 
-  group_by(longitude, latitude, county, fips, site_number, date_local) %>% 
-  summarize(max_8hr_avg = max_8hr_avg(sample_measurement)) %>% ungroup()
-
-daily_max_counties <- daily_max_sites %>%
-  group_by(county, fips, date_local) %>% 
-  summarise(ozone_avg = max(max_8hr_avg, na.rm = TRUE)) %>% ungroup()
-daily_max_counties[is.infinite(daily_max_counties$ozone_avg),]$ozone_avg <- NA
+# daily_max_sites <- ozone_texas %>% 
+#   group_by(longitude, latitude, county, fips, site_number, date_local) %>% 
+#   summarize(max_8hr_avg = max_8hr_avg(sample_measurement)) %>% ungroup()
+# 
+# daily_max_counties <- daily_max_sites %>%
+#   group_by(county, fips, date_local) %>% 
+#   summarise(ozone_avg = max(max_8hr_avg, na.rm = TRUE)) %>% ungroup()
+# daily_max_counties[is.infinite(daily_max_counties$ozone_avg),]$ozone_avg <- NA
 
 # write_csv(daily_max_counties, "ozone_daily_max_counties.csv")
+daily_max_counties <- read_csv("ozone_daily_max_counties.csv")
 ```
 
 
@@ -737,16 +745,18 @@ pm2.5_texas %>% filter(sample_measurement <= 0) %>% mutate(sample_measurement = 
 
 ```{r daily average pm2.5}
 
-daily_avg_pm2.5_site <- pm2.5_texas %>% filter(sample_duration == "1 HOUR", sample_frequency == "HOURLY") %>% 
-  group_by(longitude, latitude, county, fips, site_number, date_local) %>% 
-  summarize(site_avg = mean(sample_measurement, na.rm = TRUE)) %>% ungroup()
-
-
-daily_avg_pm2.5_county <- daily_avg_pm2.5_site %>% group_by(county, fips, date_local) %>% 
-  summarise(pm2.5_avg = max(site_avg, na.rm = TRUE)) %>% ungroup()
-daily_avg_pm2.5_county[is.infinite(daily_avg_pm2.5_county$pm2.5_avg), ]$pm2.5_avg <- NA
-
+# daily_avg_pm2.5_site <- pm2.5_texas %>% filter(sample_duration == "1 HOUR", sample_frequency == "HOURLY") %>% 
+#   group_by(longitude, latitude, county, fips, site_number, date_local) %>% 
+#   summarize(site_avg = mean(sample_measurement, na.rm = TRUE)) %>% ungroup()
+# 
+# 
+# daily_avg_pm2.5_county <- daily_avg_pm2.5_site %>% group_by(county, fips, date_local) %>% 
+#   summarise(pm2.5_avg = max(site_avg, na.rm = TRUE)) %>% ungroup()
+# daily_avg_pm2.5_county[is.infinite(daily_avg_pm2.5_county$pm2.5_avg), ]$pm2.5_avg <- NA
+# 
 # write_csv(daily_avg_pm2.5_county, "pm2.5_daily_avg_counties.csv")
+daily_avg_pm2.5_county <- read_csv("pm2.5_daily_avg_counties.csv")
+
 ```
 
 
@@ -892,7 +902,7 @@ ggplotly(p, dynamicTicks = TRUE) %>% layout(hovermode = "x")
 
 
 
-#---------------------------------------------------- COVID - Pollution Analysis ----------------------------------------------------#
+#---------------------------------------------------- COVID - PM2.5 Analysis ----------------------------------------------------#
 
 
 
@@ -1043,9 +1053,9 @@ ggplotly(p) %>% layout(hovermode = "x")
 ```
 
 
-```{r pm2.5 monthly analysis }
+```{r pm2.5 number of monthly violations}
 
-test_county = "Dallas"
+test_county = "Harris"
 p_days <- days_high_pm %>% 
   filter(county == test_county, date >= "2020-03-01", date <= "2021-09-01") %>%
   ggplot(aes(date, n_high_pm)) + geom_line(color = "#5E747F") +
@@ -1076,21 +1086,118 @@ grid.arrange(p_days, p_fatal_month)
 ```
 
 
-To determine if pm2.5 levels has an impact on the number of covid related deaths, I found the number of days a county had high levels of pm2.5 (greater than 12) per month and compared it to the number of deaths. There seems to be a partial relationship between the two variables since covid deaths tend to spike after 
+To determine if pm2.5 levels has an impact on the number of covid related deaths, I found the number of days a county had high levels of pm2.5 (greater than 12) per month and compared it to the number of deaths. There seems to be a partial relationship between the two variables since covid deaths tend to spike as the number of days with high PM2.5 levels increase. But there is a spike in covid fatalities around new years 2021 while the number of days surpassing the suggested EPA threshold of 12 ug/m3 remains relatively low. This comparison hints at a possible, underlying confounding factor that affects both since both. The January COVID spike can be explained by people visiting relatives for the holidays and thus having a higher chance to come into contact with someone with COVID. 
+
+
+```{r monthly avg pm vs covid}
+
+monthly_pm <- daily_avg_pm2.5_county %>% mutate(year = year(date_local), month = month(date_local)) %>% 
+  group_by(county, year, month) %>%
+  mutate(monthly_pm = mean(pm2.5_avg, na.rm = TRUE)) %>% ungroup() %>% 
+  mutate(date = ymd(paste(year, month, "01"))) 
+
+
+
+test_county = "Harris"
+# p_pm_monthly <- 
+
+p1 <- monthly_pm %>% 
+  filter(county == test_county, date >= "2020-03-01", date <= "2021-09-01") %>%
+  ggplot(aes(date, monthly_pm)) + geom_line(color = "#424874") +
+  xlab("Date") + ylab("Average PM2.5 ug/m3") +
+  ggtitle(paste("Monthly Average PM2.5 Value", test_county, "County"))
+
+p2 <- daily_avg_pm2.5_county %>% filter(county == test_county, date_local >= "2020-03-01", date_local <= "2021-09-01") %>% 
+  ggplot(aes(date_local, pm2.5_avg)) + 
+    geom_line(color = "#424874")
+  
+p_fatal_month <- monthly_covid_fatal %>% filter(County == test_county, date >= "2020-03-01", date <= "2021-09-01") %>% 
+  ggplot(aes(date, monthly_fatal)) + 
+  geom_line(color = "#424874") +
+  ggtitle(paste("Monthly Covid Fatalities per 100,000 in", test_county, "County")) +
+  xlab("Date") + ylab("Monthly Fatalities")
+
+
+grid.arrange(p1, p2)
+```
 
 
 
 
+```{r 7 day average}
+
+pm_7day <- daily_avg_pm2.5_county %>% group_by(county) %>% 
+  mutate(pm_7day = rollmeanr(pm2.5_avg, 7, fill = NA)) %>% ungroup()
+  
+
+
+test_county = "Harris"
+p1 <- pm_7day %>% 
+  filter(county == test_county, date_local >= "2020-03-01", date_local <= "2021-09-01") %>%
+  ggplot(aes(date_local, pm_7day)) + geom_line(color = "#424874") +
+  geom_hline(yintercept = 12, color = "red")
+
+p2 <- covid_fatal %>% 
+  filter(County == test_county, Date >= "2020-03-01", Date <= "2021-09-01") %>%
+  ggplot(aes(Date, fatal_7day_avg)) + geom_line(color = "#424874")
+  
+grid.arrange(p1, p2)
+
+
+```
+
+
+```{r}
+
+test_county = c("Harris", "Dallas")
+p2 <- covid_fatal %>% 
+  group_by(County) %>% 
+  mutate(scaled_fatal_7day = rollmeanr(scaled_new_fatal, 7, fill = NA)) %>% ungroup() %>% 
+  filter(County == test_county, Date >= "2020-03-01", Date <= "2021-09-01") %>%
+  ggplot(aes(Date, scaled_fatal_7day)) + geom_line(aes(color = County))
 
 
 
+p1 <- pm_7day %>% 
+  filter(county %in% test_county, date_local >= "2020-03-01", date_local <= "2021-09-01") %>%
+  ggplot(aes(date_local, pm_7day)) + geom_line(aes(color = county)) +
+  geom_hline(yintercept = 12, color = "red")
+
+ggplotly(p1) %>% layout(hovermode = "x")
+
+
+grid.arrange(p2, p1)
+```
+
+
+```{r}
+covid_fatal %>% 
+  group_by(County) %>% 
+  # mutate(scaled_fatal_7day = rollmeanr(scaled_new_fatal, 7, fill = NA)) %>% ungroup() %>% 
+  filter(County %in% test_county) %>%
+  ggplot(aes(Date, new_fatal)) + geom_line(aes(color = County))
+```
 
 
 
+ 
+#---------------------------------------------------- COVID - Ozone Analysis ----------------------------------------------------#
 
 
+```{r}
 
+test_county == "Harris"
+p3 <- daily_max_counties %>% 
+  filter(county == test_county, date_local >= "2020-03-01", date_local <= "2021-09-01") %>%
+  group_by(county) %>% 
+  mutate(ozone_7day = rollmeanr(ozone_avg, 7, fill = NA)) %>% ungroup() %>% 
+  ggplot(aes(date_local, ozone_7day)) + 
+    geom_line(color = "#424874") + 
+    geom_hline(yintercept = 50, color = "red")
 
+grid.arrange(p1, p2, p3)
+
+```
 
 
 
