@@ -167,6 +167,24 @@ covid_fatal$County <- as.factor(covid_fatal$County)
 texas_pop <- read_csv("texas_population_by_county.csv")
 texas_pop$County <- texas_pop$County %>% str_replace(".", "") %>% str_replace(" County, Texas", "")
 
+
+# Import COVID Hospitalization Data and subset the data that is needed. Also renaming columns to be more concise.
+covid_hospital <- read_csv("covid_hospital_texas.csv")
+covid_hospital <- covid_hospital %>% select(collection_week, state, address, city, fips_code, 
+                            total_adult_patients_hospitalized_confirmed_and_suspected_covid_7_day_sum,
+                            total_adult_patients_hospitalized_confirmed_covid_7_day_sum,
+                            total_pediatric_patients_hospitalized_confirmed_and_suspected_covid_7_day_sum, 
+                            total_pediatric_patients_hospitalized_confirmed_covid_7_day_sum)
+
+covid_hospital$collection_week <- mdy(covid_hospital$collection_week)
+covid_hospital <- covid_hospital %>% rename(date = collection_week, fips = fips_code, 
+                          total_adult_hospitalized_conf_and_sus_7day = total_adult_patients_hospitalized_confirmed_and_suspected_covid_7_day_sum,
+                          total_adult_hospitalized_conf_7day = total_adult_patients_hospitalized_confirmed_covid_7_day_sum, 
+                          total_pediatric_hospitalized_conf_and_sus_7day = total_pediatric_patients_hospitalized_confirmed_and_suspected_covid_7_day_sum, 
+                          total_pediatric_hospitalized_conf_7day = total_pediatric_patients_hospitalized_confirmed_covid_7_day_sum)
+
+
+
 ```
 
 
@@ -205,12 +223,12 @@ max_8hr_avg <- function(data){
 
 
 ```{r find daily max avg per county}
-# daily_max_sites <- ozone_texas %>% 
-#   group_by(longitude, latitude, county, fips, site_number, date_local) %>% 
+# daily_max_sites <- ozone_texas %>%
+#   group_by(longitude, latitude, county, fips, site_number, date_local) %>%
 #   summarize(max_8hr_avg = max_8hr_avg(sample_measurement)) %>% ungroup()
 # 
 # daily_max_counties <- daily_max_sites %>%
-#   group_by(county, fips, date_local) %>% 
+#   group_by(county, fips, date_local) %>%
 #   summarise(ozone_avg = max(max_8hr_avg, na.rm = TRUE)) %>% ungroup()
 # daily_max_counties[is.infinite(daily_max_counties$ozone_avg),]$ozone_avg <- NA
 
@@ -745,12 +763,12 @@ pm2.5_texas %>% filter(sample_measurement <= 0) %>% mutate(sample_measurement = 
 
 ```{r daily average pm2.5}
 
-# daily_avg_pm2.5_site <- pm2.5_texas %>% filter(sample_duration == "1 HOUR", sample_frequency == "HOURLY") %>% 
-#   group_by(longitude, latitude, county, fips, site_number, date_local) %>% 
+# daily_avg_pm2.5_site <- pm2.5_texas %>% filter(sample_duration == "1 HOUR", sample_frequency == "HOURLY") %>%
+#   group_by(longitude, latitude, county, fips, site_number, date_local) %>%
 #   summarize(site_avg = mean(sample_measurement, na.rm = TRUE)) %>% ungroup()
 # 
 # 
-# daily_avg_pm2.5_county <- daily_avg_pm2.5_site %>% group_by(county, fips, date_local) %>% 
+# daily_avg_pm2.5_county <- daily_avg_pm2.5_site %>% group_by(county, fips, date_local) %>%
 #   summarise(pm2.5_avg = max(site_avg, na.rm = TRUE)) %>% ungroup()
 # daily_avg_pm2.5_county[is.infinite(daily_avg_pm2.5_county$pm2.5_avg), ]$pm2.5_avg <- NA
 # 
@@ -905,6 +923,7 @@ ggplotly(p, dynamicTicks = TRUE) %>% layout(hovermode = "x")
 #---------------------------------------------------- COVID - PM2.5 Analysis ----------------------------------------------------#
 
 
+In this step, I am calculating the number of new cases and fatalities per day as well as the rolling average for each. Moreover, I am including a scaled version of each metric to aptly compare between different locations by converting to cases/fatalities per 100,000 residents. The hospitalization data is sourced from a facility level data for hospital utilization aggregated on a weekly basis. N/A's indicate a no response from the hospital while suppression was applied to protect the patients identity when the number of patients was less than 4. In order to aggregate the data county to compare to the other datasets, I will be replacing the suppressed values with 2, since the values represent 1, 2, or 3 patients. When there are 0 and 4 patients hospitalized, the value is recorded.
 
 ```{r number of new covid cases}
 
@@ -917,12 +936,25 @@ covid_cases <- covid_cases %>% group_by(County) %>%
   mutate(scaled_new_cases = new_cases / Population * 100000, scaled_cases = Cases / Population * 100000) 
 
 
+# Calculate the number of new fatalities per day and the rolling 7 day average
 covid_fatal <- covid_fatal %>% group_by(County) %>% 
   mutate(new_fatal = c(0, diff(Fatalities))) %>% group_by(County) %>% 
   mutate(fatal_7day_avg = round(rollmeanr(new_fatal, 7, fill = NA))) %>% 
   ungroup() %>% as_tibble() %>% 
   left_join(texas_pop) %>% 
   mutate(scaled_new_fatal = new_fatal / Population * 100000, scaled_fatal = Fatalities / Population * 100000) 
+
+
+# Calculate the number of hospitalizations in each county.
+  # Note: the county is denoted by its FIPS code.
+
+
+# 
+# covid_hospital %>% group_by(date, fips) %>% summarize(total_adult_hospitalized_conf_and_sus_7day = sum(total_adult_hospitalized_conf_and_sus_7day), 
+#                                                       total_adult_hospitalized_conf_7day = sum(total_adult_hospitalized_conf_7day), 
+#                                                       total_pediatric_hospitalized_conf_and_sus_7day = sum(total_pediatric_hospitalized_conf_and_sus_7day), 
+#                                                       total_pediatric_hospitalized_conf_7day = sum(total_pediatric_hospitalized_conf_7day)) %>% 
+#   filter(total_adult_hospitalized_conf_and_sus_7day < 0)
 
 ```
 
@@ -952,14 +984,16 @@ ggplotly(p, dynamicTicks = TRUE) %>% layout(hovermode = "x")
 ```
 
 
-```{r plot cases and fatalities per 100000}
+```{r plot covid data per 100000}
 
+# Pot the number of new cases per 100,000 people
 p <- covid_cases %>%  filter(County %in% c("Dallas", 'Harris')) %>%  ggplot(aes(x = Date, y = scaled_new_cases)) + 
   geom_line(aes(color = County)) +
   ggtitle("New Cases per 100,000")
 ggplotly(p, dynamicTicks = TRUE) %>% layout(hovermode = "x")
 
 
+# Pot the number of new fatalities per 100,000 people
 p <- covid_fatal %>%  filter(County %in% c("Dallas", 'Harris', 'Travis')) %>%  ggplot(aes(x = Date, y = scaled_new_fatal)) + 
   geom_line(aes(color = County)) +
   ggtitle("Scaled New Fatalities")
@@ -970,20 +1004,24 @@ ggplotly(p, dynamicTicks = TRUE) %>% layout(hovermode = "x")
 
 ```{r plot covid cases with pm2.5}
 
-test_county = "Harris"
-p_cases <- covid_cases %>% filter(County == test_county, Date >= "2020-03-06", Date <= "2021-09-01") %>% 
+test_county = "Tarrant"
+# Plot the number of new covid cases per 100,000
+p_cases <- covid_cases %>% filter(County == test_county, Date >= "2020-03-06", Date <= "2021-12-31") %>% 
   ggplot(aes(x = Date)) + 
     geom_line(aes(y = scaled_new_cases), color = "#424874") +
     ggtitle(paste("Daily Covid Cases per 100,000 in", test_county, "County")) +
     xlab("Date") + ylab("Cases")
 
-p_fatal <- covid_fatal %>% filter(County == test_county, Date >= "2020-03-06", Date <= "2021-09-01") %>% 
+
+# Plot the number of new covid fatalities per 100,000
+p_fatal <- covid_fatal %>% filter(County == test_county, Date >= "2020-03-06", Date <= "2021-12-31") %>% 
   ggplot(aes(x = Date)) + 
     geom_line(aes(y = scaled_new_fatal), color = "red") +
     ggtitle(paste("Daily Covid Fatalities per 100,000 in", test_county, "County")) +
     xlab("Date") + ylab("Fatalities")
 
-p_pm <- filter(daily_avg_pm2.5_county, county == test_county, date_local >= "2020-03-06") %>% 
+# Plot the daily average of PM2.5
+p_pm <- filter(daily_avg_pm2.5_county, county == test_county, date_local >= "2020-03-06", date_local <= "2021-12-31") %>% 
   ggplot(aes(x = date_local)) +
       geom_line(aes(y = pm2.5_avg), color = "#5E747F") +
       geom_hline(yintercept = 12, color = "red") +
@@ -991,38 +1029,27 @@ p_pm <- filter(daily_avg_pm2.5_county, county == test_county, date_local >= "202
       ggtitle(paste("Average PM2.5 Value in", test_county, "County")) +
       xlab("Date") + ylab("PM2.5 Daily Avg")  
 
+# Plot all three previous plots
 grid.arrange(p_cases, p_fatal, p_pm)
-# rm(p_cases, p_fatal, p_pm)
 
 ```
 
 
-```{r test pm vs covid}
+```{r pm vs covid on same plot}
 
 # Plot covid fatalities with pm2.5 
-test_county <- "Dallas"
+test_county <- "Harris"
 p <- covid_fatal %>% filter(County == test_county, Date >= "2020-03-06") %>% 
   filter(County == test_county, Date <= "2021-09-01") %>% 
   inner_join(daily_avg_pm2.5_county, by = c("Date" = "date_local", "County" = "county")) %>% 
   ggplot(aes(x = Date)) + 
-    geom_line(aes(y = new_fatal), color = "red") +
-    geom_line(aes(y = pm2.5_avg), color = "blue", alpha = 0.3) +
+    geom_line(aes(y = new_fatal), color = "#32213A") +
+    geom_line(aes(y = pm2.5_avg), color = "#2176AE") +
+    geom_hline(yintercept = 15, color = "red") +
     ggtitle("Daily Covid Fatalities per 100,000") +
     xlab("Date") + ylab("Fatalities")
 ggplotly(p, dynamicTicks = TRUE) %>% layout(hovermode = "x")
 
-
-
-# plot number of daily covid cases with pm2.5
-p <- covid_cases %>% filter(County == "Harris", Date >= "2020-03-06") %>% 
-  filter(County == "Harris", Date <= "2021-09-01") %>% 
-  inner_join(daily_avg_pm2.5_county, by = c("Date" = "date_local", "County" = "county")) %>% 
-  ggplot(aes(x = Date)) + 
-    geom_line(aes(y = scaled_new_cases), color = "red") +
-    geom_line(aes(y = pm2.5_avg), color = "blue") +
-    ggtitle("Daily Covid Cases per 100,000") +
-    xlab("Date") + ylab("Cases")
-ggplotly(p)
 ```
 
 
@@ -1047,41 +1074,36 @@ monthly_covid_fatal <- covid_fatal %>% mutate(year = year(Date), month = month(D
 ```
 
 
-```{r}
-p <- covid_cases %>% filter(County == "Harris") %>% ggplot(aes(Date, cases_7day_avg)) + geom_line()
-ggplotly(p) %>% layout(hovermode = "x")
-```
-
 
 ```{r pm2.5 number of monthly violations}
 
-test_county = "Harris"
+test_county = c("Harris", "Dallas")
 p_days <- days_high_pm %>% 
-  filter(county == test_county, date >= "2020-03-01", date <= "2021-09-01") %>%
-  ggplot(aes(date, n_high_pm)) + geom_line(color = "#5E747F") +
+  filter(county %in% test_county, date >= "2020-03-01", date <= "2021-12-31", date <= "2021-12-31") %>%
+  ggplot(aes(date, n_high_pm)) + geom_line(aes(color = county)) +
   xlab("Date") + ylab("Number of High Days") +
   ggtitle(paste("Number of Days per month with High PM2.5 in", test_county, "County"))
 # ggplotly(p) %>% layout(hovermode = "x")
 
-p_fatal <- covid_fatal %>% filter(County == test_county, Date >= "2020-03-06", Date <= "2021-09-01") %>% 
-  ggplot(aes(x = Date)) + 
-    geom_line(aes(y = scaled_new_fatal), color = "red") +
-    ggtitle(paste("Daily Covid Fatalities per 100,000 in", test_county, "County")) +
-    xlab("Date") + ylab("Fatalities")
-
-p_fatal_month <- monthly_covid_fatal %>% filter(County == test_county, date >= "2020-03-01", date <= "2021-09-01") %>% 
+p_fatal_month <- monthly_covid_fatal %>% filter(County %in% test_county, date >= "2020-03-01") %>% 
   ggplot(aes(date, monthly_fatal)) + 
-  geom_line(color = "#424874") +
+  geom_line(aes(color = County)) +
   ggtitle(paste("Monthly Covid Fatalities per 100,000 in", test_county, "County")) +
   xlab("Date") + ylab("Monthly Fatalities")
 
-p_cases <- covid_cases %>% filter(County == test_county, Date >= "2020-03-06", Date <= "2021-09-01") %>% 
-  ggplot(aes(x = Date)) + 
-    geom_line(aes(y = scaled_new_cases), color = "#424874") +
-    ggtitle(paste("Daily Covid Cases per 100,000 in", test_county, "County")) +
+p_cases <- covid_cases %>% 
+    mutate(year = year(Date), month = month(Date)) %>%
+    group_by(County, year, month) %>% 
+    summarise(monthly_cases = sum(scaled_new_cases), total_cases = sum(new_cases)) %>%
+    ungroup() %>% 
+    mutate(date = ymd(paste(year, month, "01"))) %>% 
+    filter(County %in% test_county, date >= "2020-03-01") %>% 
+    ggplot(aes(x = date)) + 
+    geom_line(aes(y = monthly_cases, color = County)) +
+    ggtitle(paste("Monthly Covid Cases per 100,000 in", test_county, "County")) +
     xlab("Date") + ylab("Cases")
 
-grid.arrange(p_days, p_fatal_month)
+grid.arrange(p_days, p_cases, p_fatal_month)
 
 ```
 
@@ -1098,27 +1120,34 @@ monthly_pm <- daily_avg_pm2.5_county %>% mutate(year = year(date_local), month =
 
 
 
-test_county = "Harris"
-# p_pm_monthly <- 
+test_county = "Bexar"
 
 p1 <- monthly_pm %>% 
-  filter(county == test_county, date >= "2020-03-01", date <= "2021-09-01") %>%
+  filter(county == test_county, date >= "2020-03-01", date <= "2021-12-31") %>%
   ggplot(aes(date, monthly_pm)) + geom_line(color = "#424874") +
   xlab("Date") + ylab("Average PM2.5 ug/m3") +
   ggtitle(paste("Monthly Average PM2.5 Value", test_county, "County"))
 
-p2 <- daily_avg_pm2.5_county %>% filter(county == test_county, date_local >= "2020-03-01", date_local <= "2021-09-01") %>% 
-  ggplot(aes(date_local, pm2.5_avg)) + 
-    geom_line(color = "#424874")
-  
-p_fatal_month <- monthly_covid_fatal %>% filter(County == test_county, date >= "2020-03-01", date <= "2021-09-01") %>% 
+p_cases <- covid_cases %>% 
+    mutate(year = year(Date), month = month(Date)) %>%
+    group_by(County, year, month) %>% 
+    summarise(monthly_cases = sum(scaled_new_cases), total_cases = sum(new_cases)) %>%
+    ungroup() %>% 
+    mutate(date = ymd(paste(year, month, "01"))) %>% 
+    filter(County == test_county, date >= "2020-03-01") %>% 
+    ggplot(aes(x = date)) + 
+    geom_line(aes(y = monthly_cases), color = "#5E747F") +
+    ggtitle(paste("Monthly Covid Cases per 100,000 in", test_county, "County")) +
+    xlab("Date") + ylab("Cases")
+
+p_fatal_month <- monthly_covid_fatal %>% filter(County == test_county, date >= "2020-03-01", date <= "2021-12-31") %>% 
   ggplot(aes(date, monthly_fatal)) + 
   geom_line(color = "#424874") +
   ggtitle(paste("Monthly Covid Fatalities per 100,000 in", test_county, "County")) +
   xlab("Date") + ylab("Monthly Fatalities")
 
 
-grid.arrange(p1, p2)
+grid.arrange(p1, p_cases, p_fatal_month)
 ```
 
 
@@ -1130,77 +1159,115 @@ pm_7day <- daily_avg_pm2.5_county %>% group_by(county) %>%
   mutate(pm_7day = rollmeanr(pm2.5_avg, 7, fill = NA)) %>% ungroup()
   
 
-
 test_county = "Harris"
 p1 <- pm_7day %>% 
-  filter(county == test_county, date_local >= "2020-03-01", date_local <= "2021-09-01") %>%
+  filter(county == test_county, date_local >= "2020-03-01", date_local <= "2021-12-31") %>%
   ggplot(aes(date_local, pm_7day)) + geom_line(color = "#424874") +
-  geom_hline(yintercept = 12, color = "red")
+  geom_hline(yintercept = 12, color = "red") +
+  ggtitle("")
 
 p2 <- covid_fatal %>% 
-  filter(County == test_county, Date >= "2020-03-01", Date <= "2021-09-01") %>%
+  filter(County == test_county, Date >= "2020-03-01") %>%
   ggplot(aes(Date, fatal_7day_avg)) + geom_line(color = "#424874")
   
+
 grid.arrange(p1, p2)
 
 
+ggplotly(p2) %>% layout(hovermode = "x")
+
 ```
 
 
-```{r}
+```{r comparing counties}
 
 test_county = c("Harris", "Dallas")
-p2 <- covid_fatal %>% 
+
+p_pm <- pm_7day %>% 
+  filter(county %in% test_county, date_local >= "2020-03-01", date_local <= "2021-12-31") %>%
+  ggplot(aes(date_local, pm_7day)) + geom_line(aes(color = county)) +
+  geom_hline(yintercept = 15, color = "red")
+
+p_fatal <- covid_fatal %>% 
   group_by(County) %>% 
   mutate(scaled_fatal_7day = rollmeanr(scaled_new_fatal, 7, fill = NA)) %>% ungroup() %>% 
-  filter(County == test_county, Date >= "2020-03-01", Date <= "2021-09-01") %>%
+  filter(County %in% test_county, Date >= "2020-03-01") %>%
   ggplot(aes(Date, scaled_fatal_7day)) + geom_line(aes(color = County))
 
-
-
-p1 <- pm_7day %>% 
-  filter(county %in% test_county, date_local >= "2020-03-01", date_local <= "2021-09-01") %>%
-  ggplot(aes(date_local, pm_7day)) + geom_line(aes(color = county)) +
-  geom_hline(yintercept = 12, color = "red")
-
-ggplotly(p1) %>% layout(hovermode = "x")
-
-
-grid.arrange(p2, p1)
-```
-
-
-```{r}
-covid_fatal %>% 
+p_cases <- covid_cases %>% 
   group_by(County) %>% 
-  # mutate(scaled_fatal_7day = rollmeanr(scaled_new_fatal, 7, fill = NA)) %>% ungroup() %>% 
-  filter(County %in% test_county) %>%
-  ggplot(aes(Date, new_fatal)) + geom_line(aes(color = County))
+  mutate(scaled_cases_7day = rollmeanr(scaled_new_cases, 7, fill = NA)) %>% ungroup() %>% 
+  filter(County %in% test_county, Date >= "2020-03-01") %>% 
+  ggplot(aes(Date, scaled_cases_7day)) + geom_line(aes(color = County))
+  
+grid.arrange(p_pm, p_cases, p_fatal)
 ```
 
 
 
+Since March 2020 when COVID data began being recorded and collected, there has been 3 major spikes in COVID cases and COVID related fatalities. COVID fatalities seem to peak in either July or in January. As mentioned before, the January spike is likely caused by traveling and socializing during the holiday season. The other 2  fatalities spikes occur in late summer, on the other hand, and dont have such a clear cut explanations. 
+
+ 
+ 
+```{r}
+
+test_county = "Dallas"
+p <- covid_fatal %>% filter(County == test_county) %>%  
+  ggplot(aes(Date, scaled_new_fatal)) + 
+  geom_line(color = "#32213A") +
+  xlab("Date") + ylab("New Cases") + ggtitle("New COVID Fatalities per 100,000 People")
+ggplotly(p)
+
+```
+ 
+ 
  
 #---------------------------------------------------- COVID - Ozone Analysis ----------------------------------------------------#
 
 
-```{r}
+```{r monthly pm, ozone, and covid}
 
-test_county == "Harris"
-p3 <- daily_max_counties %>% 
-  filter(county == test_county, date_local >= "2020-03-01", date_local <= "2021-09-01") %>%
+test_county = "Bexar"
+
+p_pm <- pm_7day %>% 
+  filter(county %in% test_county, date_local >= "2020-03-01", date_local <= "2021-12-31") %>%
+  ggplot(aes(date_local, pm_7day)) + geom_line(aes(color = county)) +
+  geom_hline(yintercept = 15, color = "red") + theme(legend.position = "none") +
+  xlab("Date") + ylab("PM2.5") + ggtitle(paste("7 Day Avg of PM2.5 in", test_county, "County"))
+
+p_ozone <- daily_max_counties %>% 
+  filter(county == test_county, date_local >= "2020-03-01") %>%
   group_by(county) %>% 
-  mutate(ozone_7day = rollmeanr(ozone_avg, 7, fill = NA)) %>% ungroup() %>% 
+  mutate(ozone_7day = rollmeanr(ozone_avg, 7, fill = NA)) %>% ungroup() %>%
   ggplot(aes(date_local, ozone_7day)) + 
     geom_line(color = "#424874") + 
-    geom_hline(yintercept = 50, color = "red")
+    geom_hline(yintercept = 50, color = "red") + 
+    xlab("Date") + ylab("Ozone") + ggtitle(paste("7 Day Avg of Ozone in", test_county, "County"))
 
-grid.arrange(p1, p2, p3)
+p_fatal <- covid_fatal %>% 
+  filter(County == test_county, Date >= "2020-03-01") %>%
+  ggplot(aes(Date, fatal_7day_avg)) + geom_line(color = "#424874") + 
+  xlab("Date") + ylab("Fatalities") + ggtitle(paste("7 Day Avg of COVID Fatalities in", test_county, "County"))
+
+grid.arrange(p_pm, p_ozone, p_fatal)
 
 ```
 
 
 
+```{r}
+
+highest <- covid_fatal %>% filter(County == "Harris") %>% arrange(desc(scaled_new_fatal)) %>% slice(1:3)
+
+covid_fatal %>% filter(County == "Harris") %>% 
+  ggplot(aes(Date, scaled_new_fatal)) + 
+  geom_line() +
+  geom_point(aes(x = highest$Date[1], y = highest$scaled_new_fatal[1]), color = "red") +
+  geom_point(aes(x = highest$Date[2], y = highest$scaled_new_fatal[2]), color = "red") +
+  geom_point(aes(x = highest$Date[3], y = highest$scaled_new_fatal[3]), color = "red")
+
+
+```
 
 
 
