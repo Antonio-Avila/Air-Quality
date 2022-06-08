@@ -948,13 +948,26 @@ covid_fatal <- covid_fatal %>% group_by(County) %>%
 # Calculate the number of hospitalizations in each county.
   # Note: the county is denoted by its FIPS code.
 
-
 # 
+# covid_hospital %>% 
+#   select(total_adult_hospitalized_conf_and_sus_7day, 
+#          total_adult_hospitalized_conf_7day, 
+#          total_pediatric_hospitalized_conf_and_sus_7day, 
+#          total_pediatric_hospitalized_conf_7day) %>% 
+#   apply(, 2, function(x){x[]})
+
+
+# covid_hospital %>% select(-date, -state, -address, -city) %>%
+
+covid_hospital$total_adult_hospitalized_conf_7day %>% sapply(function(x) {print(x)})
+
+ 
 # covid_hospital %>% group_by(date, fips) %>% summarize(total_adult_hospitalized_conf_and_sus_7day = sum(total_adult_hospitalized_conf_and_sus_7day), 
 #                                                       total_adult_hospitalized_conf_7day = sum(total_adult_hospitalized_conf_7day), 
 #                                                       total_pediatric_hospitalized_conf_and_sus_7day = sum(total_pediatric_hospitalized_conf_and_sus_7day), 
 #                                                       total_pediatric_hospitalized_conf_7day = sum(total_pediatric_hospitalized_conf_7day)) %>% 
 #   filter(total_adult_hospitalized_conf_and_sus_7day < 0)
+
 
 ```
 
