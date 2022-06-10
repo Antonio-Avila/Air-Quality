@@ -136,6 +136,47 @@ state_codes <- aqs_states()
 # covid_fatal <- bind_rows(covid_fatal_2020, covid_fatal_2021)
 # write_csv(covid_fatal, "covid_fatal.csv")
 
+
+
+# Clean COVID hospitalization data
+
+  # First, I need to replace the suppressed values in each column. Data is suppressed when there are less than 4 patients hospitalized, 
+  # Note: the county is denoted by its FIPS code.
+
+covid_hospital <- read_csv("covid_hospital_texas.csv")
+covid_hospital <- covid_hospital %>% select(collection_week, state, address, city, fips_code, 
+                            total_adult_patients_hospitalized_confirmed_and_suspected_covid_7_day_sum,
+                            total_adult_patients_hospitalized_confirmed_covid_7_day_sum,
+                            total_pediatric_patients_hospitalized_confirmed_and_suspected_covid_7_day_sum, 
+                            total_pediatric_patients_hospitalized_confirmed_covid_7_day_sum)
+
+covid_hospital$collection_week <- mdy(covid_hospital$collection_week)
+covid_hospital <- covid_hospital %>% rename(date = collection_week, fips = fips_code, 
+                          total_adult_hospitalized_conf_and_sus_7day = total_adult_patients_hospitalized_confirmed_and_suspected_covid_7_day_sum,
+                          total_adult_hospitalized_conf_7day = total_adult_patients_hospitalized_confirmed_covid_7_day_sum, 
+                          total_pediatric_hospitalized_conf_and_sus_7day = total_pediatric_patients_hospitalized_confirmed_and_suspected_covid_7_day_sum, 
+                          total_pediatric_hospitalized_conf_7day = total_pediatric_patients_hospitalized_confirmed_covid_7_day_sum)
+
+covid_hospital[covid_hospital < 0 & !is.na(covid_hospital)] <- 2
+covid_hospital <- covid_hospital %>% group_by(date, fips) %>% 
+                      summarise(total_adult_hospitalized_conf_and_sus_7day  = sum(total_adult_hospitalized_conf_and_sus_7day, na.rm = TRUE), 
+                             total_adult_hospitalized_conf_7day = sum(total_adult_hospitalized_conf_7day, na.rm = TRUE), 
+                             total_pediatric_hospitalized_conf_and_sus_7day = sum(total_pediatric_hospitalized_conf_and_sus_7day, na.rm = TRUE), 
+                             total_pediatric_hospitalized_conf_7day = sum(total_pediatric_hospitalized_conf_7day, na.rm = TRUE)) %>% ungroup()
+
+covid_hospital <- covid_hospital %>% group_by(date, fips) %>% 
+                    mutate(total_conf_hosp_7day = total_adult_hospitalized_conf_7day + total_pediatric_hospitalized_conf_7day, 
+                           total_conf_and_sus_hosp_7day = total_adult_hospitalized_conf_and_sus_7day + total_pediatric_hospitalized_conf_and_sus_7day) %>% 
+                    ungroup()
+
+county_codes <- fips_info(covid_hospital$fips) %>% select(county, fips)
+county_codes$fips <- as.double(county_codes$fips)
+
+covid_hospital <- covid_hospital %>% group_by(date, fips) %>% 
+                       summarise_at(vars(total_adult_hospitalized_conf_and_sus_7day:total_conf_and_sus_hosp_7day), sum) %>% ungroup()
+covid_hospital %>% left_join(county_codes, by = "fips") %>% View()
+ 
+
 ```
 
 
@@ -946,22 +987,7 @@ covid_fatal <- covid_fatal %>% group_by(County) %>%
 
 
 # Calculate the number of hospitalizations in each county. 
-  # First, I need to replace the suppressed values in each column. Data is suppressed when there are less than 4 patients hospitalized, 
-  # Note: the county is denoted by its FIPS code.
 
-covid_hospital[covid_hospital < 0 & !is.na(covid_hospital)] <- 2
-covid_hospital <- covid_hospital %>% group_by(date, fips) %>% 
-                      summarise(total_adult_hospitalized_conf_and_sus_7day  = sum(total_adult_hospitalized_conf_and_sus_7day, na.rm = TRUE), 
-                             total_adult_hospitalized_conf_7day = sum(total_adult_hospitalized_conf_7day, na.rm = TRUE), 
-                             total_pediatric_hospitalized_conf_and_sus_7day = sum(total_pediatric_hospitalized_conf_and_sus_7day, na.rm = TRUE), 
-                             total_pediatric_hospitalized_conf_7day = sum(total_pediatric_hospitalized_conf_7day, na.rm = TRUE)) %>% ungroup()
-
-covid_hospital <- covid_hospital %>% group_by(date, fips) %>% 
-                    mutate(total_conf_hosp_7day = total_adult_hospitalized_conf_7day + total_pediatric_hospitalized_conf_7day, 
-                           total_conf_and_sus_hosp_7day = total_adult_hospitalized_conf_and_sus_7day + total_pediatric_hospitalized_conf_and_sus_7day) %>% 
-                    ungroup()
-
- 
 
 
 ```
