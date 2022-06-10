@@ -945,28 +945,23 @@ covid_fatal <- covid_fatal %>% group_by(County) %>%
   mutate(scaled_new_fatal = new_fatal / Population * 100000, scaled_fatal = Fatalities / Population * 100000) 
 
 
-# Calculate the number of hospitalizations in each county.
+# Calculate the number of hospitalizations in each county. 
+  # First, I need to replace the suppressed values in each column. Data is suppressed when there are less than 4 patients hospitalized, 
   # Note: the county is denoted by its FIPS code.
 
-# 
-# covid_hospital %>% 
-#   select(total_adult_hospitalized_conf_and_sus_7day, 
-#          total_adult_hospitalized_conf_7day, 
-#          total_pediatric_hospitalized_conf_and_sus_7day, 
-#          total_pediatric_hospitalized_conf_7day) %>% 
-#   apply(, 2, function(x){x[]})
+covid_hospital[covid_hospital < 0 & !is.na(covid_hospital)] <- 2
+covid_hospital <- covid_hospital %>% group_by(date, fips) %>% 
+                      summarise(total_adult_hospitalized_conf_and_sus_7day  = sum(total_adult_hospitalized_conf_and_sus_7day, na.rm = TRUE), 
+                             total_adult_hospitalized_conf_7day = sum(total_adult_hospitalized_conf_7day, na.rm = TRUE), 
+                             total_pediatric_hospitalized_conf_and_sus_7day = sum(total_pediatric_hospitalized_conf_and_sus_7day, na.rm = TRUE), 
+                             total_pediatric_hospitalized_conf_7day = sum(total_pediatric_hospitalized_conf_7day, na.rm = TRUE)) %>% ungroup()
 
-
-# covid_hospital %>% select(-date, -state, -address, -city) %>%
-
-covid_hospital$total_adult_hospitalized_conf_7day %>% sapply(function(x) {print(x)})
+covid_hospital <- covid_hospital %>% group_by(date, fips) %>% 
+                    mutate(total_conf_hosp_7day = total_adult_hospitalized_conf_7day + total_pediatric_hospitalized_conf_7day, 
+                           total_conf_and_sus_hosp_7day = total_adult_hospitalized_conf_and_sus_7day + total_pediatric_hospitalized_conf_and_sus_7day) %>% 
+                    ungroup()
 
  
-# covid_hospital %>% group_by(date, fips) %>% summarize(total_adult_hospitalized_conf_and_sus_7day = sum(total_adult_hospitalized_conf_and_sus_7day), 
-#                                                       total_adult_hospitalized_conf_7day = sum(total_adult_hospitalized_conf_7day), 
-#                                                       total_pediatric_hospitalized_conf_and_sus_7day = sum(total_pediatric_hospitalized_conf_and_sus_7day), 
-#                                                       total_pediatric_hospitalized_conf_7day = sum(total_pediatric_hospitalized_conf_7day)) %>% 
-#   filter(total_adult_hospitalized_conf_and_sus_7day < 0)
 
 
 ```
