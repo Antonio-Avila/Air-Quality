@@ -143,39 +143,41 @@ state_codes <- aqs_states()
   # First, I need to replace the suppressed values in each column. Data is suppressed when there are less than 4 patients hospitalized, 
   # Note: the county is denoted by its FIPS code.
 
-covid_hospital <- read_csv("covid_hospital_texas.csv")
-covid_hospital <- covid_hospital %>% select(collection_week, state, address, city, fips_code, 
-                            total_adult_patients_hospitalized_confirmed_and_suspected_covid_7_day_sum,
-                            total_adult_patients_hospitalized_confirmed_covid_7_day_sum,
-                            total_pediatric_patients_hospitalized_confirmed_and_suspected_covid_7_day_sum, 
-                            total_pediatric_patients_hospitalized_confirmed_covid_7_day_sum)
-
-covid_hospital$collection_week <- mdy(covid_hospital$collection_week)
-covid_hospital <- covid_hospital %>% rename(date = collection_week, fips = fips_code, 
-                          total_adult_hospitalized_conf_and_sus_7day = total_adult_patients_hospitalized_confirmed_and_suspected_covid_7_day_sum,
-                          total_adult_hospitalized_conf_7day = total_adult_patients_hospitalized_confirmed_covid_7_day_sum, 
-                          total_pediatric_hospitalized_conf_and_sus_7day = total_pediatric_patients_hospitalized_confirmed_and_suspected_covid_7_day_sum, 
-                          total_pediatric_hospitalized_conf_7day = total_pediatric_patients_hospitalized_confirmed_covid_7_day_sum)
-
-covid_hospital[covid_hospital < 0 & !is.na(covid_hospital)] <- 2
-covid_hospital <- covid_hospital %>% group_by(date, fips) %>% 
-                      summarise(total_adult_hospitalized_conf_and_sus_7day  = sum(total_adult_hospitalized_conf_and_sus_7day, na.rm = TRUE), 
-                             total_adult_hospitalized_conf_7day = sum(total_adult_hospitalized_conf_7day, na.rm = TRUE), 
-                             total_pediatric_hospitalized_conf_and_sus_7day = sum(total_pediatric_hospitalized_conf_and_sus_7day, na.rm = TRUE), 
-                             total_pediatric_hospitalized_conf_7day = sum(total_pediatric_hospitalized_conf_7day, na.rm = TRUE)) %>% ungroup()
-
-covid_hospital <- covid_hospital %>% group_by(date, fips) %>% 
-                    mutate(total_conf_hosp_7day = total_adult_hospitalized_conf_7day + total_pediatric_hospitalized_conf_7day, 
-                           total_conf_and_sus_hosp_7day = total_adult_hospitalized_conf_and_sus_7day + total_pediatric_hospitalized_conf_and_sus_7day) %>% 
-                    ungroup()
-
-county_codes <- fips_info(covid_hospital$fips) %>% select(county, fips)
-county_codes$fips <- as.double(county_codes$fips)
-
-covid_hospital <- covid_hospital %>% group_by(date, fips) %>% 
-                       summarise_at(vars(total_adult_hospitalized_conf_and_sus_7day:total_conf_and_sus_hosp_7day), sum) %>% ungroup()
-covid_hospital %>% left_join(county_codes, by = "fips") %>% View()
- 
+# covid_hospital <- read_csv("covid_hospital_texas.csv")
+# covid_hospital <- covid_hospital %>% select(collection_week, state, address, city, fips_code, 
+#                             total_adult_patients_hospitalized_confirmed_and_suspected_covid_7_day_sum,
+#                             total_adult_patients_hospitalized_confirmed_covid_7_day_sum,
+#                             total_pediatric_patients_hospitalized_confirmed_and_suspected_covid_7_day_sum, 
+#                             total_pediatric_patients_hospitalized_confirmed_covid_7_day_sum)
+# 
+# covid_hospital$collection_week <- mdy(covid_hospital$collection_week)
+# covid_hospital <- covid_hospital %>% rename(date = collection_week, fips = fips_code, 
+#                           total_adult_hospitalized_conf_and_sus_7day = total_adult_patients_hospitalized_confirmed_and_suspected_covid_7_day_sum,
+#                           total_adult_hospitalized_conf_7day = total_adult_patients_hospitalized_confirmed_covid_7_day_sum, 
+#                           total_pediatric_hospitalized_conf_and_sus_7day = total_pediatric_patients_hospitalized_confirmed_and_suspected_covid_7_day_sum, 
+#                           total_pediatric_hospitalized_conf_7day = total_pediatric_patients_hospitalized_confirmed_covid_7_day_sum)
+# 
+# covid_hospital[covid_hospital < 0 & !is.na(covid_hospital)] <- 2
+# covid_hospital <- covid_hospital %>% group_by(date, fips) %>% 
+#                       summarise(total_adult_hospitalized_conf_and_sus_7day  = sum(total_adult_hospitalized_conf_and_sus_7day, na.rm = TRUE), 
+#                              total_adult_hospitalized_conf_7day = sum(total_adult_hospitalized_conf_7day, na.rm = TRUE), 
+#                              total_pediatric_hospitalized_conf_and_sus_7day = sum(total_pediatric_hospitalized_conf_and_sus_7day, na.rm = TRUE), 
+#                              total_pediatric_hospitalized_conf_7day = sum(total_pediatric_hospitalized_conf_7day, na.rm = TRUE)) %>% ungroup()
+# 
+# covid_hospital <- covid_hospital %>% group_by(date, fips) %>% 
+#                     mutate(total_conf_hosp_7day = total_adult_hospitalized_conf_7day + total_pediatric_hospitalized_conf_7day, 
+#                            total_conf_and_sus_hosp_7day = total_adult_hospitalized_conf_and_sus_7day + total_pediatric_hospitalized_conf_and_sus_7day) %>% 
+#                     ungroup()
+# 
+# county_codes <- fips_info(covid_hospital$fips) %>% select(county, fips)
+# county_codes$fips <- as.double(county_codes$fips)
+# 
+# covid_hospital <- covid_hospital %>% group_by(date, fips) %>% 
+#                        summarise_at(vars(total_adult_hospitalized_conf_and_sus_7day:total_conf_and_sus_hosp_7day), sum) %>% ungroup()
+# covid_hospital <- covid_hospital %>% left_join(county_codes, by = "fips")
+# covid_hospital$county <- covid_hospital$county %>% str_replace(" County", "")
+# 
+# write_csv(covid_hospital, "covid_hospital.csv")
 
 ```
 
@@ -210,19 +212,7 @@ texas_pop$County <- texas_pop$County %>% str_replace(".", "") %>% str_replace(" 
 
 
 # Import COVID Hospitalization Data and subset the data that is needed. Also renaming columns to be more concise.
-covid_hospital <- read_csv("covid_hospital_texas.csv")
-covid_hospital <- covid_hospital %>% select(collection_week, state, address, city, fips_code, 
-                            total_adult_patients_hospitalized_confirmed_and_suspected_covid_7_day_sum,
-                            total_adult_patients_hospitalized_confirmed_covid_7_day_sum,
-                            total_pediatric_patients_hospitalized_confirmed_and_suspected_covid_7_day_sum, 
-                            total_pediatric_patients_hospitalized_confirmed_covid_7_day_sum)
-
-covid_hospital$collection_week <- mdy(covid_hospital$collection_week)
-covid_hospital <- covid_hospital %>% rename(date = collection_week, fips = fips_code, 
-                          total_adult_hospitalized_conf_and_sus_7day = total_adult_patients_hospitalized_confirmed_and_suspected_covid_7_day_sum,
-                          total_adult_hospitalized_conf_7day = total_adult_patients_hospitalized_confirmed_covid_7_day_sum, 
-                          total_pediatric_hospitalized_conf_and_sus_7day = total_pediatric_patients_hospitalized_confirmed_and_suspected_covid_7_day_sum, 
-                          total_pediatric_hospitalized_conf_7day = total_pediatric_patients_hospitalized_confirmed_covid_7_day_sum)
+covid_hospital <- read_csv("covid_hospital.csv")
 
 
 
@@ -801,6 +791,23 @@ pm2.5_texas %>% filter(sample_measurement <= 0) %>% mutate(sample_measurement = 
 
 ```
 
+```{r}
+
+prev_7day_avg <- function(data){
+  avg = matrix(nrow = length(test), ncol = 1)
+  avg[1:6] <- NA
+  for (i in 7:length(data)){
+      prev_7days = data[(i-6):i]
+      avg[i] <- mean(prev_7days, na.rm = TRUE)
+      print(prev_7days)
+  }
+  return(avg)
+}
+
+daily_avg_pm2.5_county %>% group_by(county) %>% summarise(avg_7day = prev_7day_avg(pm2.5_avg))
+
+```
+
 
 ```{r daily average pm2.5}
 
@@ -815,7 +822,8 @@ pm2.5_texas %>% filter(sample_measurement <= 0) %>% mutate(sample_measurement = 
 # 
 # write_csv(daily_avg_pm2.5_county, "pm2.5_daily_avg_counties.csv")
 daily_avg_pm2.5_county <- read_csv("pm2.5_daily_avg_counties.csv")
-
+daily_avg_pm2.5_county <- daily_avg_pm2.5_county %>% group_by(county) %>% 
+  mutate(pm_7day = rollmeanr(pm2.5_avg, 7, fill = NA)) %>% ungroup()
 ```
 
 
@@ -985,53 +993,49 @@ covid_fatal <- covid_fatal %>% group_by(County) %>%
   left_join(texas_pop) %>% 
   mutate(scaled_new_fatal = new_fatal / Population * 100000, scaled_fatal = Fatalities / Population * 100000) 
 
-
-# Calculate the number of hospitalizations in each county. 
-
-
-
-```
-
-
-
-```{r plot covid data}
-
-# Plotting the total number of cases and fatalities per day in Harris and Dallas County (containing the 2 largest cities in Texas, Houston and Dallas)
-covid_cases %>% filter(County %in% c("Dallas", 'Harris')) %>%  ggplot(aes(x = Date, y = Cases)) + 
-  geom_line(aes(color = County)) 
-
-# Plotting the new cases in the above counties
-p <- covid_cases %>% filter(County %in% c("Dallas", 'Harris')) %>%  ggplot(aes(x = Date, y = new_cases)) + 
-  geom_line(aes(color = County)) +
-  ggtitle("Raw New Cases")
-ggplotly(p, dynamicTicks = TRUE) %>% layout(hovermode = "x")
-
-
-# Plotting the number of new cases
-p <- covid_cases %>% filter(County == "Harris") %>% 
-  ggplot(aes(x = Date, y = new_cases)) + 
-    geom_line() +
-    geom_line(aes(y = cases_7day_avg), color = "red") 
-ggplotly(p, dynamicTicks = TRUE) %>% layout(hovermode = "x")
-
+# Scale the number of total hospitalizations per 100,000
+covid_hospital <- covid_hospital %>% group_by(county) %>% 
+  left_join(texas_pop, by = c("county" = "County")) %>% 
+  mutate(scaled_conf_hosp_7day = total_conf_hosp_7day / Population * 100000, scaled_conf_and_sus_hosp_7day = total_conf_and_sus_hosp_7day / Population * 100000)
 
 ```
+
 
 
 ```{r plot covid data per 100000}
 
+test_county = "Harris"
+start_date = min(covid_hospital$date)
+end_date = max(covid_cases$Date)
+
 # Pot the number of new cases per 100,000 people
-p <- covid_cases %>%  filter(County %in% c("Dallas", 'Harris')) %>%  ggplot(aes(x = Date, y = scaled_new_cases)) + 
+p_cases <- covid_cases %>%  filter(County == test_county, Date >= start_date, Date <= end_date) %>%  
+  ggplot(aes(x = Date, y = scaled_new_cases)) + 
   geom_line(aes(color = County)) +
-  ggtitle("New Cases per 100,000")
-ggplotly(p, dynamicTicks = TRUE) %>% layout(hovermode = "x")
+  ggtitle("Daily COVID related Cases per 100,000") +
+  theme(legend.position = "none")
+# ggplotly(p, dynamicTicks = TRUE) %>% layout(hovermode = "x")
 
 
 # Pot the number of new fatalities per 100,000 people
-p <- covid_fatal %>%  filter(County %in% c("Dallas", 'Harris', 'Travis')) %>%  ggplot(aes(x = Date, y = scaled_new_fatal)) + 
+p_fatal <- covid_fatal %>%  filter(County == test_county, Date >= start_date, Date <= end_date) %>%  
+  ggplot(aes(x = Date, y = scaled_new_fatal)) + 
   geom_line(aes(color = County)) +
-  ggtitle("Scaled New Fatalities")
-ggplotly(p, dynamicTicks = TRUE) %>% layout(hovermode = "x")
+  ggtitle("Daily COVID related Fatalities per 100,000") +
+  theme(legend.position = "none")
+# ggplotly(p, dynamicTicks = TRUE) %>% layout(hovermode = "x")
+
+
+# Plot the number of hospitalizations per 100,000
+p_hosp <- covid_hospital %>% filter(county == test_county, date >= start_date, date <= end_date) %>% 
+  ggplot(aes(date, scaled_conf_hosp_7day)) + 
+    geom_line(color = "#424874") +
+    ggtitle("Daily COVID related Hospitalization per 100,000") +
+    xlab("Date") + ylab("Hospitalizations")
+# ggplotly(p, dynamicTicks = TRUE) %>% layout(hovermode = "x")
+
+grid.arrange(p_cases, p_fatal, p_hosp)
+
 ```
 
 
@@ -1065,24 +1069,6 @@ p_pm <- filter(daily_avg_pm2.5_county, county == test_county, date_local >= "202
 
 # Plot all three previous plots
 grid.arrange(p_cases, p_fatal, p_pm)
-
-```
-
-
-```{r pm vs covid on same plot}
-
-# Plot covid fatalities with pm2.5 
-test_county <- "Harris"
-p <- covid_fatal %>% filter(County == test_county, Date >= "2020-03-06") %>% 
-  filter(County == test_county, Date <= "2021-09-01") %>% 
-  inner_join(daily_avg_pm2.5_county, by = c("Date" = "date_local", "County" = "county")) %>% 
-  ggplot(aes(x = Date)) + 
-    geom_line(aes(y = new_fatal), color = "#32213A") +
-    geom_line(aes(y = pm2.5_avg), color = "#2176AE") +
-    geom_hline(yintercept = 15, color = "red") +
-    ggtitle("Daily Covid Fatalities per 100,000") +
-    xlab("Date") + ylab("Fatalities")
-ggplotly(p, dynamicTicks = TRUE) %>% layout(hovermode = "x")
 
 ```
 
@@ -1153,7 +1139,6 @@ monthly_pm <- daily_avg_pm2.5_county %>% mutate(year = year(date_local), month =
   mutate(date = ymd(paste(year, month, "01"))) 
 
 
-
 test_county = "Bexar"
 
 p1 <- monthly_pm %>% 
@@ -1185,15 +1170,10 @@ grid.arrange(p1, p_cases, p_fatal_month)
 ```
 
 
-
-
 ```{r 7 day average}
 
-pm_7day <- daily_avg_pm2.5_county %>% group_by(county) %>% 
-  mutate(pm_7day = rollmeanr(pm2.5_avg, 7, fill = NA)) %>% ungroup()
-  
 
-test_county = "Harris"
+test_county = "Dallas"
 p1 <- pm_7day %>% 
   filter(county == test_county, date_local >= "2020-03-01", date_local <= "2021-12-31") %>%
   ggplot(aes(date_local, pm_7day)) + geom_line(color = "#424874") +
@@ -1208,7 +1188,7 @@ p2 <- covid_fatal %>%
 grid.arrange(p1, p2)
 
 
-ggplotly(p2) %>% layout(hovermode = "x")
+# ggplotly(p2) %>% layout(hovermode = "x")
 
 ```
 
