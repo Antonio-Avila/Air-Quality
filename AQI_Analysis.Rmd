@@ -8,6 +8,7 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 
 library(tidyverse)
+library(tidymodels)
 library(readxl)
 library(RAQSAPI)
 library(keyring)
@@ -238,7 +239,14 @@ texas_pop$County <- texas_pop$County %>% str_replace(".", "") %>% str_replace(" 
 # Import COVID Hospitalization Data and subset the data that is needed. Also renaming columns to be more concise.
 covid_hospital <- read_csv("covid_hospital.csv")
 covid_hospital <- covid_hospital %>% filter(date <= "2021-12-31")
+
+
 ```
+
+
+NEED TO IMPROVE FIND MAX FUNCITON. I WOULD ASSUME THE DATE OF THE MAX COVID CASES WOULD BE BEFORE OR COINCIDE THE MAX OF COVID FATALITIES, NOT BE SEVERAL MONTHS BEFORE AS IT IS IN HARRIS COUNTY. NEED TO CHECK WITH PLOTS. 
+
+MAY NEED TO FIT SMOOTHER CURVES OR FUNCTIONS TO THE DATA AND USE THE CURVE AND A MORE TRADITIONAL ALGO TO FIND THE MAX'S. GOES BACK TO THE IDEA OF MODELING. 
 
 
 ```{r functions needed for analysis}
@@ -292,6 +300,13 @@ n_days_before <- function(maxim, n = 7){
       days_before["wave"] = rep(maxim$wave, length.out = nrow(days_before), each = n)
       return(days_before)
 }
+
+# Function to find the n days after each peak for each wabve
+n_days_after <- function(maxim, n = 7){
+      days_after = data.frame(date = as.Date(unlist(lapply(maxim$date, "+", 1:n))))
+      days_after["wave"] = rep(maxim$wave, length.out = nrow(days_after), each = n)
+      return(days_after)
+}
 ```
 
 
@@ -321,40 +336,6 @@ p <- test_data %>%
 ggplotly(p, dynamicTicks = TRUE) %>% layout(hovermode = "x")
 
 ```
-
-
-```{r check to see if there is a spike in pollution a week before the spike in covid fatalities}
-
-# NEED TO FIND A BETTER WAY TO SPLIT UP THE DIFFERENT WAVES. LOOK INTO HOW TO PASS ON THE WAVE VALUE. GETTING A MEMORY ERROR WHEN ATTEMPTING TO JOIN DAYS BEFORE DATA WITH THE FILTERED POLLUTION DATA.
-test_county = "Dallas"
-test_data <-  covid_cases %>% filter(county == test_county) 
-
-maxim = find_max(test_data, 'scaled_new_cases')
-
-
-i = 2
-n = 7
-days_before <- n_days_before(maxim, n)
-# test_data %>% filter(date %in% days_before$date) %>% left_join(days_before) %>% merge(days_before)
-
-# Median pm leading up to spike in cases/deaths
-daily_avg_pm2.5_county %>% filter(county == test_county, date_local %in% days_before$date) %>% 
-  left_join(days_before, by = c('date_local' = 'date')) %>% 
-  group_by(wave) %>% summarize(date.ish = mean(date_local), avg_pm = median(pm2.5_avg))
-
-
-# Annual pm avg
-p <- daily_avg_pm2.5_county %>% mutate(year = year(date_local)) %>% group_by(county, year) %>%
-  summarize(yearly_pm = mean(pm2.5_avg, na.rm = TRUE)) %>%  
-  ggplot(aes(year, yearly_pm, color = county)) + geom_line() + geom_hline(yintercept = 12, color = "red")
-ggplotly(p, dynamicTicks = TRUE)
-
-
-daily_avg_pm2.5_county[daily_avg_pm2.5_county$county == test_county & daily_avg_pm2.5_county$date_local %in% days_before$date, ][(1+i*n):(n+n*i), ] %>%
-  select(pm2.5_avg) %>% 
-  t.test(mu = 15, alternative = "greater")
-```
-
 
 #---------------------------------------------------- Ozone Analysis ----------------------------------------------------#
 
@@ -1147,6 +1128,74 @@ covid_hospital <- covid_hospital %>% group_by(county) %>%
 ```
 
 
+
+
+```{r check to see if there is a spike in pollution a week before the spike in covid fatalities}
+
+
+test_county = "Harris"
+test_data <-  covid_fatal %>% filter(county == test_county) 
+
+maxim = find_max(test_data, 'scaled_new_fatal')
+n = 14
+days_before <- n_days_before(maxim, n)
+days_after <- n_days_after(maxim, n)
+
+# Various PM stats of days leading up to spike in cases/deaths
+daily_avg_pm2.5_county %>% filter(county == test_county) %>% 
+  right_join(days_before, by = c('date_local' = 'date')) %>% 
+  group_by(wave) %>% summarize(start_date = min(date_local), end_date = max(date_local),
+                                avg_pm = mean(pm2.5_avg, na.rm = TRUE), med_pm = median(pm2.5_avg, na.rm = TRUE), 
+                                min_pm = min(pm2.5_avg, na.rm = TRUE), max_pm = max(pm2.5_avg, na.rm = TRUE)) %>% 
+  right_join(maxim, by = "wave")
+
+
+# Various PM stats of days leading up to spike in cases/deaths
+daily_avg_pm2.5_county %>% filter(county == test_county) %>% 
+  right_join(days_after, by = c('date_local' = 'date')) %>% 
+  group_by(wave) %>% summarize(start_date = min(date_local), end_date = max(date_local),
+                                avg_pm = mean(pm2.5_avg, na.rm = TRUE), med_pm = median(pm2.5_avg, na.rm = TRUE), 
+                                min_pm = min(pm2.5_avg, na.rm = TRUE), max_pm = max(pm2.5_avg, na.rm = TRUE)) %>% 
+  right_join(maxim, by = "wave")
+
+
+
+# Yearly avg, median, min, max of PM
+daily_avg_pm2.5_county %>% filter(county == test_county, !(date_local %in% days_before$date)) %>% 
+  group_by(county) %>% 
+  summarize(avg_pm = mean(pm2.5_avg, na.rm = TRUE), med_pm = median(pm2.5_avg, na.rm = TRUE), 
+            min_pm = min(pm2.5_avg, na.rm = TRUE), max_pm = max(pm2.5_avg, na.rm = TRUE))  %>% 
+  right_join(maxim, by = "wave")
+
+
+
+
+
+
+
+
+# Annual pm avg
+# p <- daily_avg_pm2.5_county %>% mutate(year = year(date_local)) %>% group_by(county, year) %>%
+#   summarize(yearly_pm = mean(pm2.5_avg, na.rm = TRUE)) %>%  
+#   ggplot(aes(year, yearly_pm, color = county)) + geom_line() + geom_hline(yintercept = 12, color = "red")
+# ggplotly(p, dynamicTicks = TRUE)
+
+
+daily_avg_pm2.5_county %>% filter(county == test_county) %>% 
+  left_join(days_before, by = c("date_local" = "date")) %>% 
+  filter(!is.na(wave), wave == 1) %>% 
+  t_test(response = pm2.5_avg, mu = 15)
+
+
+daily_avg_pm2.5_county %>% filter(county == test_county, date_local %in% days_before$date) %>% 
+  left_join(waves, by = c("date_local" = "date")) %>% 
+  group_by(wave) %>% 
+  summarize(t_score = observe(response = pm2.5_avg, stat = "mean"))
+
+```
+
+
+
 ```{r plot covid data per 100000}
 
 test_county = "Harris"
@@ -1157,7 +1206,7 @@ end_date = max(covid_cases$date)
 p_cases <- covid_cases %>%  filter(county == test_county, date >= start_date, date <= end_date) %>%  
   ggplot(aes(x = date, y = cases_7day_avg)) + 
   geom_line(aes(color = county)) +
-  ggtitle(paste("Daily COVID related Cases per 100,000 in", test_county, "County")) +
+  ggtitle(paste("7-day Avg og COVID related Cases per 100,000 in", test_county, "County")) +
   theme(legend.position = "none")
 # ggplotly(p, dynamicTicks = TRUE) %>% layout(hovermode = "x")
 
@@ -1166,7 +1215,7 @@ p_cases <- covid_cases %>%  filter(county == test_county, date >= start_date, da
 p_fatal <- covid_fatal %>%  filter(county == test_county, date >= start_date, date <= end_date) %>%  
   ggplot(aes(x = date, y = fatal_7day_avg)) + 
   geom_line(aes(color = county)) +
-  ggtitle(paste("Daily COVID related Fatalities per 100,000 in", test_county, "County")) +
+  ggtitle(paste("7-day Avg og COVID related Fatalities per 100,000 in", test_county, "County")) +
   theme(legend.position = "none")
 # ggplotly(p, dynamicTicks = TRUE) %>% layout(hovermode = "x")
 
@@ -1224,7 +1273,7 @@ t.test(model$residuals)
 
 ```{r plot covid cases with pm2.5}
 
-test_county = "Galveston"
+test_county = "Dallas"
 # Plot the number of new covid cases per 100,000
 p_cases <- covid_cases %>% filter(county == test_county, date >= "2020-03-06", date <= "2021-12-31") %>% 
   ggplot(aes(x = date, y = scaled_new_cases)) + 
